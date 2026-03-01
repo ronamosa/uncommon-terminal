@@ -3,7 +3,7 @@
 > A true Ghostty-powered terminal pane embedded inside Obsidian — same VT parser as the native Ghostty app, no Electron quirks, no xterm.js compromises.
 
 [![Obsidian plugin](https://img.shields.io/badge/Obsidian-Plugin-7C3AED?logo=obsidian&logoColor=white)](https://obsidian.md)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](./manifest.json)
+[![Version](https://img.shields.io/badge/version-0.1.3-blue)](./manifest.json)
 [![Desktop only](https://img.shields.io/badge/desktop-only-orange)](./manifest.json)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
