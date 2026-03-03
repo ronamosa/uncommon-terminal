@@ -23,6 +23,7 @@ esbuild.build({
     format: 'cjs',
     target: 'es2022',
     logLevel: 'info',
+    loader: { '.py': 'text' },
     sourcemap: prod ? false : 'inline',
     treeShaking: true,
     outfile: 'main.js',

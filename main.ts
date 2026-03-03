@@ -17,6 +17,8 @@ import * as child_process from 'child_process';
 import { parseGhosttyConfig, GhosttyConfig } from './src/ghostty-config';
 import { GhosttySettingTab, GhosttyTerminalSettings, DEFAULT_SETTINGS } from './src/settings';
 
+import ptyHelperCode from './pty_helper.py';
+
 const VIEW_TYPE_GHOSTTY = 'ghostty-terminal';
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
@@ -281,6 +283,19 @@ class GhosttyTerminalView extends ItemView {
             ? adapter.getFullPath?.(`${pluginVaultDir}/pty_helper.py`) ??
             path.join(vaultRoot, pluginVaultDir, 'pty_helper.py')
             : path.join(__dirname, 'pty_helper.py');
+
+        // Write the bundled python helper to the helper path if it is missing or different
+        try {
+            if (!fs.existsSync(helperPath) || fs.readFileSync(helperPath, 'utf8') !== ptyHelperCode) {
+                fs.writeFileSync(helperPath, ptyHelperCode, { encoding: 'utf8', mode: 0o755 });
+            }
+        } catch (e: unknown) {
+            const msg = `Failed to write pty_helper.py to ${helperPath} - ${e instanceof Error ? e.message : String(e)}`;
+            this.terminal?.write(`\x1b[31m${msg}\x1b[0m\r\n`);
+            this.restartBtn?.removeClass('ghostty-hidden');
+            new Notice(`Ghostty: ${msg}`, 8000);
+            return;
+        }
 
         // Verify the helper exists
         if (!fs.existsSync(helperPath)) {
