@@ -84,7 +84,11 @@ export default class GhosttyTerminalPlugin extends Plugin {
     }
 
     onunload() {
-        // Nothing to detach as leaves should persist across reloads
+        // Kill all pty processes in active terminal views
+        this.app.workspace.getLeavesOfType(VIEW_TYPE_GHOSTTY).forEach((leaf) => {
+            const view = leaf.view as GhosttyTerminalView;
+            view.killPty();
+        });
     }
 
     async loadSettings() {
@@ -257,9 +261,7 @@ class GhosttyTerminalView extends ItemView {
     private spawnPty() {
         // Kill previous process
         if (this.ptyProcess) {
-            try { this.ptyProcess.kill(); } catch { /* ignore */ }
-            this.ptyProcess = null;
-            this.resizePipe = null;
+            this.killPty();
         }
 
         const gc = this.plugin.ghosttyConfig;
@@ -445,14 +447,38 @@ class GhosttyTerminalView extends ItemView {
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
+    killPty() {
+        const proc = this.ptyProcess;
+        if (proc) {
+            // Close all stdio pipes first — this triggers stdin-EOF in pty_helper.py
+            // which causes it to self-terminate even if SIGTERM is missed.
+            try { proc.stdin?.destroy(); } catch { /* ignore */ }
+            try { proc.stdout?.destroy(); } catch { /* ignore */ }
+            try { proc.stderr?.destroy(); } catch { /* ignore */ }
+            try { (this.resizePipe as any)?.destroy?.(); } catch { /* ignore */ }
+
+            // Send SIGTERM
+            try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+
+            // Fallback: SIGKILL after a short delay in case SIGTERM is not handled
+            const pid = proc.pid;
+            if (pid) {
+                setTimeout(() => {
+                    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
+                }, 500);
+            }
+
+            this.ptyProcess = null;
+        }
+        this.resizePipe = null;
+        this.ptyAlive = false;
+    }
+
     onClose(): Promise<void> {
         this.resizeObserver?.disconnect();
-        if (this.ptyAlive) {
-            try { this.ptyProcess?.kill(); } catch { /* ignore */ }
-        }
+        this.killPty();
         this.terminal?.dispose?.();
         this.fitAddon?.dispose?.();
-        this.ptyProcess = null;
         this.terminal = null;
         this.fitAddon = null;
         return Promise.resolve();

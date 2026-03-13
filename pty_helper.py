@@ -11,7 +11,9 @@ Protocol:
 from __future__ import annotations
 
 import os
+import signal
 import sys
+import threading
 from selectors import EVENT_READ, DefaultSelector
 from struct import unpack
 from typing import Optional
@@ -54,11 +56,32 @@ def _main_unix() -> None:
     child_pid, pty_fd = pty.fork()
 
     if child_pid == 0:
-        # ─── Child: exec the shell ────────────────────────────────────────────
+        # ─── Child: close inherited pipe fds before exec ──────────────────────
+        for _fd in (_CMDIO,):
+            try:
+                os.close(_fd)
+            except OSError:
+                pass
         os.execvp(shell, args)
         sys.exit(1)  # unreachable unless execvp fails
 
     # ─── Parent: proxy I/O ───────────────────────────────────────────────────
+
+    def _shutdown(signum, frame):
+        """Graceful shutdown on SIGTERM/SIGHUP."""
+        try:
+            os.kill(child_pid, signal.SIGTERM)
+        except OSError:
+            pass
+        try:
+            os.waitpid(child_pid, 0)
+        except ChildProcessError:
+            pass
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGHUP, _shutdown)
+
     stdin_fd  = sys.stdin.fileno()
     stdout_fd = sys.stdout.fileno()
 
@@ -79,6 +102,45 @@ def _main_unix() -> None:
         has_cmdio = True
     except OSError:
         pass
+
+    # ── Watchdog thread ───────────────────────────────────────────────────────
+    # Monitors whether our parent (Obsidian/Electron) is still alive by
+    # periodically checking if our stdin pipe is still connected.
+    # When the parent dies, we kill the child shell and force-exit.
+    _parent_pid = os.getppid()
+    _stop_event = threading.Event()
+
+    def _watchdog():
+        """Background thread: detect parent death and force-exit."""
+        import select as _sel
+        while not _stop_event.wait(timeout=2.0):
+            # Method 1: check if parent PID changed (reparented to launchd/init)
+            if os.getppid() != _parent_pid:
+                break
+            # Method 2: poll stdin for hangup — most reliable on macOS
+            try:
+                r, _, _ = _sel.select([], [], [stdin_fd], 0)
+            except (OSError, ValueError):
+                break
+            # Method 3: try to fstat the resize pipe — fails if closed
+            if has_cmdio:
+                try:
+                    os.fstat(_CMDIO)
+                except OSError:
+                    break
+        # Parent is gone — tear down
+        try:
+            os.kill(child_pid, signal.SIGTERM)
+        except OSError:
+            pass
+        try:
+            os.waitpid(child_pid, os.WNOHANG)
+        except ChildProcessError:
+            pass
+        os._exit(0)
+
+    watchdog = threading.Thread(target=_watchdog, daemon=True)
+    watchdog.start()
 
     sel = DefaultSelector()
     sel.register(stdin_fd, EVENT_READ, "stdin")
@@ -107,8 +169,8 @@ def _main_unix() -> None:
                     except OSError:
                         data = b""
                     if not data:
-                        sel.unregister(stdin_fd)
-                        continue
+                        # Parent closed our stdin → Obsidian is gone; tear down.
+                        return
                     _write_all(pty_fd, data)
 
                 elif name == "cmd":
@@ -117,6 +179,9 @@ def _main_unix() -> None:
                         frame = os.read(_CMDIO, 4)
                     except OSError:
                         frame = b""
+                    if not frame:
+                        # Resize pipe closed → parent is gone; tear down.
+                        return
                     if len(frame) == 4:
                         rows, cols = unpack("!HH", frame)
                         winsize = struct.pack("HHHH", rows, cols, 0, 0)
@@ -125,12 +190,17 @@ def _main_unix() -> None:
                         except OSError:
                             pass
     finally:
+        _stop_event.set()
         sel.close()
         if old_attrs is not None:
             try:
                 termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_attrs)
             except termios.error:
                 pass
+        try:
+            os.kill(child_pid, signal.SIGTERM)
+        except OSError:
+            pass
         try:
             os.waitpid(child_pid, 0)
         except ChildProcessError:
