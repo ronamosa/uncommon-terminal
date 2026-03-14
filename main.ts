@@ -151,7 +151,7 @@ class GhosttyTerminalView extends ItemView {
     private terminal: Terminal | null = null;
     private fitAddon: FitAddon | null = null;
     private ptyProcess: child_process.ChildProcess | null = null;
-    private resizePipe: NodeJS.WritableStream | null = null;
+    private resizePipe: import('stream').Writable | null = null;
     private resizeObserver: ResizeObserver | null = null;
     private charWidth = 9;
     private charHeight = 18;
@@ -330,7 +330,7 @@ class GhosttyTerminalView extends ItemView {
                 }
             );
 
-            const stdioArr = this.ptyProcess.stdio as unknown as NodeJS.WritableStream[];
+            const stdioArr = this.ptyProcess.stdio as unknown as import('stream').Writable[];
             this.resizePipe = stdioArr[3];
 
             this.ptyAlive = true;
@@ -455,7 +455,7 @@ class GhosttyTerminalView extends ItemView {
             try { proc.stdin?.destroy(); } catch { /* ignore */ }
             try { proc.stdout?.destroy(); } catch { /* ignore */ }
             try { proc.stderr?.destroy(); } catch { /* ignore */ }
-            try { (this.resizePipe as any)?.destroy?.(); } catch { /* ignore */ }
+            try { this.resizePipe?.destroy(); } catch { /* ignore */ }
 
             // Send SIGTERM
             try { proc.kill('SIGTERM'); } catch { /* ignore */ }
