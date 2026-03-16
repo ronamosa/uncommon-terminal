@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as child_process from 'child_process';
 
-import { parseGhosttyConfig, GhosttyConfig } from './src/ghostty-config';
+import { parseGhosttyConfig, GhosttyConfig, GhosttyKeybind } from './src/ghostty-config';
 import { GhosttySettingTab, GhosttyTerminalSettings, DEFAULT_SETTINGS } from './src/settings';
 
 import ptyHelperCode from './pty_helper.py';
@@ -248,6 +248,49 @@ class GhosttyTerminalView extends ItemView {
         this.terminal.loadAddon(this.fitAddon);
 
         this.terminal.open(this.termEl!);
+
+        // Build the full keybind list: Ghostty defaults + user config.
+        // User config entries override defaults for the same key combo.
+        const effectiveKeybinds = buildEffectiveKeybinds(this.plugin.ghosttyConfig.keybinds);
+
+        // Intercept keybinds in capture phase so Obsidian's global handlers
+        // never see the key events meant for the terminal.
+        this.termEl!.addEventListener('keydown', (e: KeyboardEvent) => {
+            const match = findKeybind(e, effectiveKeybinds);
+            if (!match) return;
+
+            const action = match.action;
+
+            if (action === 'copy_to_clipboard') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                const text = window.getSelection()?.toString() ?? '';
+                if (text) navigator.clipboard.writeText(text).catch(() => {/* ignore */});
+
+            } else if (action === 'paste_from_clipboard') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                navigator.clipboard.readText().then(text => {
+                    if (this.ptyAlive && this.ptyProcess?.stdin && text) {
+                        this.ptyProcess.stdin.write(text, 'utf8');
+                    }
+                }).catch(() => {/* ignore */});
+
+            } else if (action.startsWith('text:')) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                const raw = action.slice(5);
+                const text = unescapeGhosttyText(raw);
+                if (this.ptyAlive && this.ptyProcess?.stdin) {
+                    this.ptyProcess.stdin.write(text, 'utf8');
+                }
+
+            } else {
+                // Action we can't implement (new_tab, new_window, etc.) —
+                // block Obsidian from stealing the key but let ghostty-web handle it.
+                e.stopPropagation();
+            }
+        }, { capture: true });
 
         // Try to rely on the FitAddon rather than calculating char dimensions manually
         this.fitAddon.fit();
@@ -483,4 +526,81 @@ class GhosttyTerminalView extends ItemView {
         this.fitAddon = null;
         return Promise.resolve();
     }
+}
+
+// ─── Keybind helpers ──────────────────────────────────────────────────────────
+
+// Ghostty's built-in defaults that we always enforce.
+const GHOSTTY_BUILTIN_KEYBINDS: GhosttyKeybind[] = [
+    { mods: new Set(['super']), key: 'c',     action: 'copy_to_clipboard' },
+    { mods: new Set(['super']), key: 'v',     action: 'paste_from_clipboard' },
+    // shift+enter / cmd+enter → kitty keyboard protocol newlines (used by Claude etc.)
+    { mods: new Set(['shift']), key: 'enter', action: 'text:\x1b[13;2u' },
+    { mods: new Set(['super']), key: 'enter', action: 'text:\x1b[13;9u' },
+];
+
+/**
+ * Merge built-in defaults with user config keybinds.
+ * User entries win when they share the same key combo.
+ */
+function buildEffectiveKeybinds(userKeybinds: GhosttyKeybind[]): GhosttyKeybind[] {
+    const result: GhosttyKeybind[] = [...GHOSTTY_BUILTIN_KEYBINDS];
+    for (const kb of userKeybinds) {
+        const idx = result.findIndex(r => r.key === kb.key && setsEqual(r.mods, kb.mods));
+        if (idx !== -1) result[idx] = kb;
+        else result.push(kb);
+    }
+    return result;
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+}
+
+/** Map DOM KeyboardEvent → Ghostty key name */
+function domKeyToGhostty(domKey: string): string {
+    const map: Record<string, string> = {
+        'Enter':      'enter',
+        'Tab':        'tab',
+        'Backspace':  'backspace',
+        'Escape':     'escape',
+        'Delete':     'delete',
+        'Insert':     'insert',
+        'Home':       'home',
+        'End':        'end',
+        'PageUp':     'page_up',
+        'PageDown':   'page_down',
+        'ArrowUp':    'up',
+        'ArrowDown':  'down',
+        'ArrowLeft':  'left',
+        'ArrowRight': 'right',
+        ' ':          'space',
+    };
+    if (map[domKey]) return map[domKey];
+    if (/^F\d+$/.test(domKey)) return domKey.toLowerCase();  // F1–F12
+    if (domKey.length === 1) return domKey.toLowerCase();
+    return domKey.toLowerCase();
+}
+
+function findKeybind(e: KeyboardEvent, keybinds: GhosttyKeybind[]): GhosttyKeybind | undefined {
+    const eventMods = new Set<string>();
+    if (e.metaKey)  eventMods.add('super');
+    if (e.ctrlKey)  eventMods.add('ctrl');
+    if (e.shiftKey) eventMods.add('shift');
+    if (e.altKey)   eventMods.add('alt');
+
+    const ghosttyKey = domKeyToGhostty(e.key);
+    return keybinds.find(kb => kb.key === ghosttyKey && setsEqual(kb.mods, eventMods));
+}
+
+/** Unescape Ghostty text: action escape sequences like \e, \n, \r, \t */
+function unescapeGhosttyText(s: string): string {
+    return s
+        .replace(/\\e/g, '\x1b')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\\\/g, '\\');
 }

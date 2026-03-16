@@ -28,6 +28,12 @@ export interface GhosttyThemeColors {
     brightWhite?: string;
 }
 
+export interface GhosttyKeybind {
+    mods: Set<string>;  // 'super' | 'ctrl' | 'shift' | 'alt'
+    key: string;        // ghostty key name, lowercased
+    action: string;     // e.g. 'copy_to_clipboard', 'paste_from_clipboard', 'text:\n'
+}
+
 export interface GhosttyConfig {
     fontFamily?: string;
     fontSize?: number;
@@ -41,6 +47,7 @@ export interface GhosttyConfig {
     scrollback?: number;
     shell?: string;
     ligatures?: boolean;
+    keybinds: GhosttyKeybind[];
 }
 
 /** Returns candidate config file paths in priority order */
@@ -85,7 +92,7 @@ function normalizeColor(val: string): string {
  * Ghostty config is line-delimited key = value (comments with #).
  */
 export function parseGhosttyConfig(overridePath?: string): GhosttyConfig {
-    const config: GhosttyConfig = { colors: {} };
+    const config: GhosttyConfig = { colors: {}, keybinds: [] };
 
     const candidates = getCandidatePaths(overridePath);
     let rawContent: string | null = null;
@@ -211,6 +218,22 @@ function applyConfigKey(config: GhosttyConfig, key: string, value: string) {
         case 'command':
             config.shell = expandHome(value);
             break;
+
+        // Keybindings: keybind = super+c=copy_to_clipboard
+        case 'keybind': {
+            // Split on the LAST '=' to separate key combo from action
+            const eqIdx = value.lastIndexOf('=');
+            if (eqIdx === -1) break;
+            const combo = value.slice(0, eqIdx).trim();
+            const action = value.slice(eqIdx + 1).trim();
+            if (!combo || !action) break;
+
+            const parts = combo.split('+');
+            const key = parts[parts.length - 1].toLowerCase();
+            const mods = new Set(parts.slice(0, -1).map(m => m.toLowerCase()));
+            config.keybinds.push({ mods, key, action });
+            break;
+        }
     }
 }
 
