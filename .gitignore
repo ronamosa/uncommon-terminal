@@ -23,3 +23,7 @@ node_modules/
 # NOTE: main.js IS committed intentionally — Obsidian loads it directly.
 # To exclude it from the repo (source-only mode), uncomment the next line:
 # main.js
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
