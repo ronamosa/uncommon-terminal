@@ -431,12 +431,12 @@ class GhosttyTerminalView extends ItemView {
      */
     private measureCharDimensions() {
         // Reuse or create measurement element
-        let measure = document.getElementById(CHAR_MEASURE_ID);
+        let measure = activeDocument.getElementById(CHAR_MEASURE_ID);
         if (!measure) {
-            measure = document.createElement('canvas');
+            measure = activeDocument.createElement('canvas');
             measure.id = CHAR_MEASURE_ID;
             measure.className = 'ghostty-char-measure';
-            document.body.appendChild(measure);
+            activeDocument.body.appendChild(measure);
         }
 
         const canvas = measure as HTMLCanvasElement;
@@ -506,7 +506,7 @@ class GhosttyTerminalView extends ItemView {
             // Fallback: SIGKILL after a short delay in case SIGTERM is not handled
             const pid = proc.pid;
             if (pid) {
-                setTimeout(() => {
+                window.setTimeout(() => {
                     try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
                 }, 500);
             }
