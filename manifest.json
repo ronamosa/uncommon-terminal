@@ -1,11 +1,11 @@
 {
-    "id": "ghostty-terminal",
-    "name": "Ghostty Terminal",
+    "id": "ghostty-terminal-uncommon",
+    "name": "Ghostty Terminal (Uncommon)",
     "version": "0.2.1",
     "minAppVersion": "1.7.2",
-    "description": "True Ghostty embedded terminal (libghostty-vt WASM) – with your real Ghostty config, multi-split support, and file-explorer context menu.",
+    "description": "Fork of Mayank Lavania's Ghostty Terminal. Adds mouse-wheel passthrough for alternate-screen TUIs that request mouse reporting, so apps like Claude Code scroll their own viewport instead of receiving arrow keys.",
     "author": "Mayank Lavania",
-    "authorUrl": "https://github.com/lavs9",
+    "authorUrl": "https://github.com/lavs9/obsidian-ghostty-terminal",
     "isDesktopOnly": true,
     "fundingUrl": ""
 }

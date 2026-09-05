@@ -1,3 +1,29 @@
+> **This is a fork.** Upstream is [lavs9/obsidian-ghostty-terminal](https://github.com/lavs9/obsidian-ghostty-terminal)
+> by Mayank Lavania, MIT licensed. It is vendored here under a distinct plugin id
+> (`ghostty-terminal-uncommon`) so Obsidian treats it as unmanaged and never
+> overwrites it with a community-plugin update.
+>
+> **What this fork changes:** mouse-wheel passthrough for alternate-screen TUIs.
+>
+> `ghostty-web` handles the wheel in two branches — scrollback on the normal
+> screen, and Up/Down arrow keystrokes on the alternate screen. The arrow-key
+> fallback is right for pagers like `less` and `man`, but wrong for any TUI that
+> enables mouse reporting and scrolls its own viewport. Claude Code is one: it
+> never receives the wheel events it waits for, and reads the arrows it gets
+> instead as navigation. Scrolling appears to do nothing.
+>
+> The fix checks `isAlternateScreen() && hasMouseTracking()` and, when both
+> hold, encodes the wheel as a real mouse-button report (SGR when the app has
+> negotiated DEC mode 1006, legacy X10 otherwise) and writes it to the PTY.
+> Everything else falls through to `ghostty-web` unchanged. See
+> `encodeWheelEvent` in `main.ts`.
+>
+> Intended for upstream. Nothing here is specific to any vault.
+>
+> Deploy with `npm run build && ./deploy.sh /path/to/vault`.
+
+---
+
 # Ghostty Terminal for Obsidian
 
 > A true Ghostty-powered terminal pane embedded inside Obsidian — same VT parser as the native Ghostty app, no Electron quirks, no xterm.js compromises.
