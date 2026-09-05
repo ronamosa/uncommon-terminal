@@ -19,7 +19,17 @@ import { GhosttySettingTab, GhosttyTerminalSettings, DEFAULT_SETTINGS } from './
 
 import ptyHelperCode from './pty_helper.py';
 
-const VIEW_TYPE_GHOSTTY = 'ghostty-terminal';
+const VIEW_TYPE_GHOSTTY = 'ghostty-terminal-uncommon';
+
+// Mouse-wheel reporting (xterm convention): buttons 64/65 are wheel up/down.
+const WHEEL_BUTTON_UP = 64;
+const WHEEL_BUTTON_DOWN = 65;
+const WHEEL_MAX_NOTCHES = 5;
+
+/** Clamps a 1-based cell coordinate to the terminal grid. */
+function clampCell(value: number, max: number): number {
+    return Math.min(Math.max(1, value), Math.max(1, max));
+}
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
@@ -249,6 +259,38 @@ class GhosttyTerminalView extends ItemView {
 
         this.terminal.open(this.termEl!);
 
+        // ── Mouse-wheel passthrough for alternate-screen TUIs ────────────────
+        //
+        // ghostty-web's built-in wheel handling has two branches: on the normal
+        // screen it scrolls the scrollback buffer, and on the alternate screen
+        // it translates the wheel into Up/Down arrow keystrokes. The arrow-key
+        // fallback is right for pagers (less, man), but wrong for any TUI that
+        // asks for mouse reporting and scrolls its own viewport — Claude Code,
+        // for one. Those apps never receive the wheel events they are waiting
+        // for, and the arrows they get instead mean something else entirely.
+        //
+        // So: when the app is on the alternate screen AND has enabled mouse
+        // tracking, encode the wheel as a real mouse event and send it to the
+        // PTY. Everything else falls through to ghostty-web unchanged.
+        this.terminal.attachCustomWheelEventHandler((ev: WheelEvent): boolean => {
+            const term = this.terminal;
+            if (!term) return false;
+
+            // Only take over when the app actually wants mouse events.
+            if (!term.wasmTerm?.isAlternateScreen()) return false;
+            if (!term.hasMouseTracking()) return false;
+            if (!this.ptyAlive || !this.ptyProcess?.stdin) return false;
+
+            const el = this.termEl;
+            if (!el) return false;
+
+            const seq = this.encodeWheelEvent(ev, term, el);
+            if (seq) this.ptyProcess.stdin.write(seq, 'utf8');
+
+            // Consumed either way — never fall through to the arrow-key path.
+            return true;
+        });
+
         // Build the full keybind list: Ghostty defaults + user config.
         // User config entries override defaults for the same key combo.
         const effectiveKeybinds = buildEffectiveKeybinds(this.plugin.ghosttyConfig.keybinds);
@@ -429,6 +471,55 @@ class GhosttyTerminalView extends ItemView {
      * Measures exact monospace character dimensions using a hidden canvas.
      * This mirrors what xterm.js Fit addon does, giving pixel-perfect cols/rows.
      */
+    /**
+     * Encodes a wheel event as a terminal mouse-button report.
+     *
+     * Wheel up is button 64, wheel down 65, with shift/alt/ctrl folded in as
+     * +4/+8/+16 per the xterm convention. Emits SGR (DEC mode 1006) when the
+     * app has negotiated it, and falls back to legacy X10 encoding otherwise.
+     *
+     * Returns an empty string when there is nothing to send.
+     */
+    private encodeWheelEvent(ev: WheelEvent, term: Terminal, el: HTMLElement): string {
+        // Wheel delta arrives in three units depending on the platform.
+        let lines: number;
+        if (ev.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+            lines = ev.deltaY / Math.max(1, this.charHeight);
+        } else if (ev.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+            lines = ev.deltaY;
+        } else {
+            lines = ev.deltaY * term.rows;
+        }
+        if (lines === 0) return '';
+
+        // One report per line scrolled, clamped so a flick of the wheel can't
+        // flood the PTY. Mirrors the magnitude ghostty-web uses upstream.
+        const notches = Math.min(Math.max(1, Math.round(Math.abs(lines))), WHEEL_MAX_NOTCHES);
+
+        let button = lines < 0 ? WHEEL_BUTTON_UP : WHEEL_BUTTON_DOWN;
+        if (ev.shiftKey) button += 4;
+        if (ev.altKey) button += 8;
+        if (ev.ctrlKey) button += 16;
+
+        // Cell coordinates under the pointer, 1-based, clamped to the grid.
+        const rect = el.getBoundingClientRect();
+        const col = clampCell(Math.floor((ev.clientX - rect.left) / Math.max(1, this.charWidth)) + 1, term.cols);
+        const row = clampCell(Math.floor((ev.clientY - rect.top) / Math.max(1, this.charHeight)) + 1, term.rows);
+
+        const sgr = term.getMode(1006);
+        let out = '';
+        for (let i = 0; i < notches; i++) {
+            if (sgr) {
+                out += `\x1b[<${button};${col};${row}M`;
+            } else {
+                // Legacy X10: byte-encoded and therefore capped at column 223.
+                if (col > 223 || row > 223) continue;
+                out += `\x1b[M${String.fromCharCode(32 + button, 32 + col, 32 + row)}`;
+            }
+        }
+        return out;
+    }
+
     private measureCharDimensions() {
         // Reuse or create measurement element
         let measure = activeDocument.getElementById(CHAR_MEASURE_ID);
