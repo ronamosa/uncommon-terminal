@@ -1,5 +1,5 @@
 {
-    "name": "ghostty-terminal-uncommon",
+    "name": "obsidian-ghostty-uncommon",
     "version": "0.2.0",
     "description": "Ghostty Terminal for Obsidian",
     "main": "main.js",

@@ -1,6 +1,6 @@
 > **This is a fork.** Upstream is [lavs9/obsidian-ghostty-terminal](https://github.com/lavs9/obsidian-ghostty-terminal)
 > by Mayank Lavania, MIT licensed. It is vendored here under a distinct plugin id
-> (`ghostty-terminal-uncommon`) so Obsidian treats it as unmanaged and never
+> (`obsidian-ghostty-uncommon`) so Obsidian treats it as unmanaged and never
 > overwrites it with a community-plugin update.
 >
 > **What this fork changes:** mouse-wheel passthrough for alternate-screen TUIs.
