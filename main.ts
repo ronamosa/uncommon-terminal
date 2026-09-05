@@ -19,7 +19,7 @@ import { GhosttySettingTab, GhosttyTerminalSettings, DEFAULT_SETTINGS } from './
 
 import ptyHelperCode from './pty_helper.py';
 
-const VIEW_TYPE_GHOSTTY = 'ghostty-terminal-uncommon';
+const VIEW_TYPE_GHOSTTY = 'obsidian-ghostty-uncommon';
 
 // Mouse-wheel reporting (xterm convention): buttons 64/65 are wheel up/down.
 const WHEEL_BUTTON_UP = 64;

@@ -7,7 +7,7 @@
 # already exist; run `npm run build` first.
 set -euo pipefail
 
-ID="ghostty-terminal-uncommon"
+ID="obsidian-ghostty-uncommon"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [ -f "$SRC/main.js" ] || { echo "main.js missing — run 'npm run build' first" >&2; exit 1; }
