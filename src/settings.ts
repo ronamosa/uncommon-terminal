@@ -42,6 +42,12 @@ export interface UncommonTerminalSettings {
     cursorStyleOverride: CursorStyleSetting;
     /** Cursor blink. 'default' defers to the Ghostty config. */
     cursorBlinkOverride: CursorBlinkSetting;
+    /** Terminal background. Empty defers to the Ghostty config, then the vault. */
+    backgroundOverride: string;
+    /** Default text color. Empty defers. */
+    foregroundOverride: string;
+    /** Cursor color. Empty defers. */
+    cursorColorOverride: string;
 }
 
 export const DEFAULT_SETTINGS: UncommonTerminalSettings = {
@@ -54,6 +60,9 @@ export const DEFAULT_SETTINGS: UncommonTerminalSettings = {
     scrollbackLines: 0,
     cursorStyleOverride: '',
     cursorBlinkOverride: 'default',
+    backgroundOverride: '',
+    foregroundOverride: '',
+    cursorColorOverride: '',
 };
 
 /** How long to wait for typing to stop before persisting a text field. */
@@ -131,6 +140,13 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.cursorBlinkOverride)
                 .onChange(value => this.save({ cursorBlinkOverride: value as CursorBlinkSetting })));
 
+        new Setting(containerEl).setName('Colors').setHeading()
+            .setDesc('Left unset, colors follow your Ghostty config, then your Obsidian theme.');
+
+        this.addColorSetting('Background', 'backgroundOverride', '#000000');
+        this.addColorSetting('Text', 'foregroundOverride', '#cccccc');
+        this.addColorSetting('Cursor', 'cursorColorOverride', '#00ff00');
+
         new Setting(containerEl).setName('Shell').setHeading();
 
         new Setting(containerEl)
@@ -157,6 +173,37 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
             .addText(text => text
                 .setValue(this.plugin.settings.ghosttyConfigPath)
                 .onChange(value => this.saveSoon({ ghosttyConfigPath: value })));
+    }
+
+    /**
+     * One color row: a picker, and a reset that puts the slot back to being
+     * resolved rather than set. A picker always holds a color, so "unset" needs
+     * its own affordance.
+     */
+    private addColorSetting(
+        name: string,
+        key: 'backgroundOverride' | 'foregroundOverride' | 'cursorColorOverride',
+        sample: string,
+    ): void {
+        const current = this.plugin.settings[key];
+
+        new Setting(this.containerEl)
+            .setName(name)
+            .setDesc(current ? current : 'Automatic')
+            .addColorPicker(picker => picker
+                .setValue(current || sample)
+                .onChange(value => {
+                    this.save({ [key]: value });
+                    this.display();
+                }))
+            .addExtraButton(button => button
+                .setIcon('rotate-ccw')
+                .setTooltip('Reset to automatic')
+                .setDisabled(!current)
+                .onClick(() => {
+                    this.save({ [key]: '' });
+                    this.display();
+                }));
     }
 
     override hide(): void {

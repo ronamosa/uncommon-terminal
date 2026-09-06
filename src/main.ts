@@ -79,6 +79,22 @@ export default class UncommonTerminalPlugin extends Plugin {
             }
         }));
 
+        this.addCommand({
+            id: 'copy-diagnostics',
+            name: 'Copy terminal diagnostics',
+            checkCallback: (checking: boolean) => {
+                const view = this.app.workspace.getActiveViewOfType(TerminalView);
+                if (!view) return false;
+                if (!checking) {
+                    const report = view.diagnostics();
+                    console.debug(report);
+                    void navigator.clipboard.writeText(report);
+                    new Notice('Terminal diagnostics copied.', 4000);
+                }
+                return true;
+            },
+        });
+
         this.addSettingTab(new UncommonTerminalSettingTab(this.app, this));
     }
 

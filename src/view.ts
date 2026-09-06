@@ -7,7 +7,7 @@ import type UncommonTerminalPlugin from './main';
 import { buildEffectiveKeybinds, findKeybind, unescapeGhosttyText, type Keybind } from './keybinds';
 import { PtySession, resolvePython } from './pty';
 import { FALLBACK_SCROLLBACK } from './settings';
-import { buildTheme, cssVarLookup } from './theme';
+import { buildTheme, cssVarLookup, type PaletteOverrides } from './theme';
 import { encodeWheelReport, type WheelGeometry } from './wheel';
 
 import ptyHelperCode from '../pty_helper.py';
@@ -92,7 +92,7 @@ export class TerminalView extends ItemView {
         const terminal = new Terminal({
             fontFamily: this.fontFamily(),
             fontSize: this.fontSize(),
-            theme: buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl)),
+            theme: buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl), this.paletteOverrides()),
             scrollback: this.scrollback(),
             cursorStyle: this.cursorStyle(),
             cursorBlink: this.cursorBlink(),
@@ -111,6 +111,7 @@ export class TerminalView extends ItemView {
         this.registerDomEvent(screenEl, 'keydown', ev => this.handleKeydown(ev), { capture: true });
 
         this.fitAddon.fit();
+        this.applyTheme();
     }
 
     /**
@@ -169,6 +170,16 @@ export class TerminalView extends ItemView {
         this.fitAddon?.fit();
     }
 
+    /** Colors pinned in the plugin's settings, which outrank every other source. */
+    private paletteOverrides(): PaletteOverrides {
+        const { backgroundOverride, foregroundOverride, cursorColorOverride } = this.plugin.settings;
+        return {
+            ...(backgroundOverride ? { background: backgroundOverride } : {}),
+            ...(foregroundOverride ? { foreground: foregroundOverride } : {}),
+            ...(cursorColorOverride ? { cursor: cursorColorOverride } : {}),
+        };
+    }
+
     /**
      * Rebuilds the palette and puts it on screen.
      *
@@ -184,7 +195,7 @@ export class TerminalView extends ItemView {
         const lookup = cssVarLookup(this.containerEl);
         this.themeResolved = lookup('--background-primary') !== undefined;
 
-        const theme = buildTheme(this.plugin.ghosttyConfig, lookup);
+        const theme = buildTheme(this.plugin.ghosttyConfig, lookup, this.paletteOverrides());
         if (!terminal.renderer) {
             terminal.options.theme = theme;
             return;
@@ -378,6 +389,29 @@ export class TerminalView extends ItemView {
     /** Restarts the shell in this pane, keeping the scrollback. */
     restart(): void {
         void this.startShell();
+    }
+
+    /** What the palette actually resolved to, for diagnosing a wrong one. */
+    diagnostics(): string {
+        const lookup = cssVarLookup(this.containerEl);
+        const canvas = this.screenEl?.querySelector('canvas');
+        let painted = 'no canvas';
+        if (canvas) {
+            const pixel = canvas.getContext('2d')?.getImageData(2, 2, 1, 1).data;
+            painted = pixel
+                ? '#' + [pixel[0], pixel[1], pixel[2]].map(n => n.toString(16).padStart(2, '0')).join('')
+                : 'unreadable';
+        }
+        return [
+            `attached: ${this.containerEl.isConnected}`,
+            `--background-primary: ${lookup('--background-primary') ?? '(unset)'}`,
+            `--color-red: ${lookup('--color-red') ?? '(unset)'}`,
+            `--font-monospace: ${lookup('--font-monospace') ?? '(unset)'}`,
+            `theme resolved from vault: ${this.themeResolved}`,
+            `theme.background: ${buildTheme(this.plugin.ghosttyConfig, lookup, this.paletteOverrides()).background}`,
+            `painted pixel: ${painted}`,
+            `ghostty config colors: ${Object.keys(this.plugin.ghosttyConfig.colors).length} set`,
+        ].join('\n');
     }
 }
 
