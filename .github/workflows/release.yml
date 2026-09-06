@@ -29,12 +29,12 @@ jobs:
         run: npm run check
 
       - name: Attest main.js
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: main.js
 
       - name: Attest styles.css
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: styles.css
 
