@@ -29,6 +29,8 @@ export class TerminalView extends ItemView {
     private statusEl: HTMLElement | null = null;
     private keybinds: Keybind[] = [];
     private cwdOverride: string | null = null;
+    /** Whether the palette was last built with the vault's variables readable. */
+    private themeResolved = false;
 
     constructor(leaf: WorkspaceLeaf, private readonly plugin: UncommonTerminalPlugin) {
         super(leaf);
@@ -59,7 +61,13 @@ export class TerminalView extends ItemView {
         this.initTerminal();
         await this.startShell();
 
-        this.resizeObserver = new ResizeObserver(() => this.fitAddon?.fit());
+        this.resizeObserver = new ResizeObserver(() => {
+            this.fitAddon?.fit();
+            // Obsidian can construct a view before attaching it, and no CSS
+            // variable resolves against a detached element — so the palette is
+            // rebuilt the first time the pane actually has a size.
+            if (!this.themeResolved) this.applyTheme();
+        });
         this.resizeObserver.observe(this.screenEl);
     }
 
@@ -152,13 +160,40 @@ export class TerminalView extends ItemView {
 
         terminal.options.fontFamily = this.fontFamily();
         terminal.options.fontSize = this.fontSize();
-        terminal.options.theme = buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl));
         terminal.options.scrollback = this.scrollback();
         terminal.options.cursorStyle = this.cursorStyle();
         terminal.options.cursorBlink = this.cursorBlink();
 
+        this.applyTheme();
         this.keybinds = buildEffectiveKeybinds(this.plugin.ghosttyConfig.keybinds);
         this.fitAddon?.fit();
+    }
+
+    /**
+     * Rebuilds the palette and puts it on screen.
+     *
+     * Assigning `terminal.options.theme` does nothing once the terminal is
+     * open — ghostty-web only warns — so the renderer is told directly. It
+     * stores the palette without drawing, and the render loop repaints just the
+     * dirty cells, so one forced full pass is what actually recolors the screen.
+     */
+    private applyTheme(): void {
+        const terminal = this.terminal;
+        if (!terminal) return;
+
+        const lookup = cssVarLookup(this.containerEl);
+        this.themeResolved = lookup('--background-primary') !== undefined;
+
+        const theme = buildTheme(this.plugin.ghosttyConfig, lookup);
+        if (!terminal.renderer) {
+            terminal.options.theme = theme;
+            return;
+        }
+
+        terminal.renderer.setTheme(theme);
+        if (terminal.wasmTerm) {
+            terminal.renderer.render(terminal.wasmTerm, true, terminal.viewportY, terminal);
+        }
     }
 
     // ── Input ────────────────────────────────────────────────────────────────
