@@ -4,7 +4,7 @@ A real shell in an Obsidian pane. Not a command runner, not an output panel — 
 terminal, with a login shell, job control, and full-screen TUIs that behave the
 way they do in a terminal emulator.
 
-![A terminal running in an Obsidian pane](images/screenshot.png)
+![btop running in an Obsidian side pane, beside a note](images/screenshot.png)
 
 ## Why this one
 
@@ -41,6 +41,10 @@ Uncommon Terminal checks whether the running app is on the alternate screen
 genuine mouse-button report — SGR when the app has negotiated DEC mode 1006,
 legacy X10 otherwise — and writes it to the PTY. Everything else falls through
 unchanged, so pagers keep their arrow keys.
+
+![vim open on the plugin's own wheel encoder, in a pane](images/screenshot-vim.png)
+
+*The encoder above, open in the terminal it ships in.*
 
 ## Requirements
 
