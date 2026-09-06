@@ -29,8 +29,6 @@ export class TerminalView extends ItemView {
     private statusEl: HTMLElement | null = null;
     private keybinds: Keybind[] = [];
     private cwdOverride: string | null = null;
-    /** Whether the palette was last built with the vault's variables readable. */
-    private themeResolved = false;
 
     constructor(leaf: WorkspaceLeaf, private readonly plugin: UncommonTerminalPlugin) {
         super(leaf);
@@ -61,13 +59,7 @@ export class TerminalView extends ItemView {
         this.initTerminal();
         await this.startShell();
 
-        this.resizeObserver = new ResizeObserver(() => {
-            this.fitAddon?.fit();
-            // Obsidian can construct a view before attaching it, and no CSS
-            // variable resolves against a detached element — so the palette is
-            // rebuilt the first time the pane actually has a size.
-            if (!this.themeResolved) this.applyTheme();
-        });
+        this.resizeObserver = new ResizeObserver(() => this.fitAddon?.fit());
         this.resizeObserver.observe(this.screenEl);
     }
 
@@ -111,7 +103,6 @@ export class TerminalView extends ItemView {
         this.registerDomEvent(screenEl, 'keydown', ev => this.handleKeydown(ev), { capture: true });
 
         this.fitAddon.fit();
-        this.applyTheme();
     }
 
     /**
@@ -193,8 +184,6 @@ export class TerminalView extends ItemView {
         if (!terminal) return;
 
         const lookup = cssVarLookup(this.containerEl);
-        this.themeResolved = lookup('--background-primary') !== undefined;
-
         const theme = buildTheme(this.plugin.ghosttyConfig, lookup, this.paletteOverrides());
         if (!terminal.renderer) {
             terminal.options.theme = theme;
@@ -407,7 +396,6 @@ export class TerminalView extends ItemView {
             `--background-primary: ${lookup('--background-primary') ?? '(unset)'}`,
             `--color-red: ${lookup('--color-red') ?? '(unset)'}`,
             `--font-monospace: ${lookup('--font-monospace') ?? '(unset)'}`,
-            `theme resolved from vault: ${this.themeResolved}`,
             `theme.background: ${buildTheme(this.plugin.ghosttyConfig, lookup, this.paletteOverrides()).background}`,
             `painted pixel: ${painted}`,
             `ghostty config colors: ${Object.keys(this.plugin.ghosttyConfig.colors).length} set`,
