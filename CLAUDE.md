@@ -98,10 +98,6 @@ Everything else returns `false` and falls through unchanged.
 - Pure logic goes in a DOM-free module with tests. `wheel.ts`, `keybinds.ts`,
   and the `parseGhosttyConfigText` half of `ghostty-config.ts` are the pattern.
 - `Notice` is for things the user must act on. Success is not one of them.
-- `.agents/rules/obsidian-plugin.md` carries one further standing rule: before
-  pushing, let verification run and confirm, and keep the release version in
-  step across `manifest.json`, `versions.json`, the README, and the GitHub
-  release.
 - Shell commands here may be aliased to `-i`; use `cp -f`, `rm -f`, `mv -f` to
   avoid hanging on a prompt.
 
