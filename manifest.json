@@ -1,11 +1,10 @@
 {
-    "id": "obsidian-ghostty-uncommon",
-    "name": "Ghostty Terminal (Uncommon)",
-    "version": "0.2.1",
-    "minAppVersion": "1.7.2",
-    "description": "Fork of Mayank Lavania's Ghostty Terminal. Adds mouse-wheel passthrough for alternate-screen TUIs that request mouse reporting, so apps like Claude Code scroll their own viewport instead of receiving arrow keys.",
-    "author": "Mayank Lavania",
-    "authorUrl": "https://github.com/lavs9/obsidian-ghostty-terminal",
-    "isDesktopOnly": true,
-    "fundingUrl": ""
+	"id": "uncommon-terminal",
+	"name": "Uncommon Terminal",
+	"version": "1.0.0",
+	"minAppVersion": "1.7.2",
+	"description": "Run a real shell in a pane, rendered by Ghostty's terminal parser. Mouse-aware TUIs scroll properly. macOS and Linux.",
+	"author": "Ron Amosa",
+	"authorUrl": "https://github.com/ronamosa",
+	"isDesktopOnly": true
 }

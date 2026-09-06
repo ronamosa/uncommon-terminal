@@ -1,299 +1,149 @@
-> **This is a fork.** Upstream is [lavs9/obsidian-ghostty-terminal](https://github.com/lavs9/obsidian-ghostty-terminal)
-> by Mayank Lavania, MIT licensed. It is vendored here under a distinct plugin id
-> (`obsidian-ghostty-uncommon`) so Obsidian treats it as unmanaged and never
-> overwrites it with a community-plugin update.
->
-> **What this fork changes:** mouse-wheel passthrough for alternate-screen TUIs.
->
-> `ghostty-web` handles the wheel in two branches — scrollback on the normal
-> screen, and Up/Down arrow keystrokes on the alternate screen. The arrow-key
-> fallback is right for pagers like `less` and `man`, but wrong for any TUI that
-> enables mouse reporting and scrolls its own viewport. Claude Code is one: it
-> never receives the wheel events it waits for, and reads the arrows it gets
-> instead as navigation. Scrolling appears to do nothing.
->
-> The fix checks `isAlternateScreen() && hasMouseTracking()` and, when both
-> hold, encodes the wheel as a real mouse-button report (SGR when the app has
-> negotiated DEC mode 1006, legacy X10 otherwise) and writes it to the PTY.
-> Everything else falls through to `ghostty-web` unchanged. See
-> `encodeWheelEvent` in `main.ts`.
->
-> Intended for upstream. Nothing here is specific to any vault.
->
-> Deploy with `npm run build && ./deploy.sh /path/to/vault`.
+# Uncommon Terminal
 
----
+A real shell in an Obsidian pane. Not a command runner, not an output panel — a
+terminal, with a login shell, job control, and full-screen TUIs that behave the
+way they do in a terminal emulator.
 
-# Ghostty Terminal for Obsidian
+![A terminal running in an Obsidian pane](images/screenshot.png)
 
-> A true Ghostty-powered terminal pane embedded inside Obsidian — same VT parser as the native Ghostty app, no Electron quirks, no xterm.js compromises.
+## Why this one
 
-[![Obsidian plugin](https://img.shields.io/badge/Obsidian-Plugin-7C3AED?logo=obsidian&logoColor=white)](https://obsidian.md)
-[![Version](https://img.shields.io/badge/version-0.1.3-blue)](./manifest.json)
-[![Desktop only](https://img.shields.io/badge/desktop-only-orange)](./manifest.json)
-[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+Terminal plugins for Obsidian usually stall on the same two problems, and this
+one takes a different route on both.
 
----
+**The parser.** Rendering is handled by [`ghostty-web`][ghostty-web], which
+compiles the same libghostty VT parser that the Ghostty terminal uses to
+WebAssembly. So the escape-sequence handling is a real terminal's, not an
+approximation of one.
 
-## What is this?
+**The shell process.** Talking to a PTY from Electron normally means
+`node-pty`, a native addon that has to be rebuilt against whichever Electron
+version Obsidian shipped this month. Instead, the shell runs behind a small
+proxy built on Python's standard-library `pty` module. There is nothing to
+compile, nothing to rebuild after an Obsidian update, and no binary in the
+release. Python 3 is already on every macOS install and effectively every
+Linux one.
 
-**Ghostty Terminal** embeds a fully functional, real terminal inside your Obsidian vault pane. Under the hood it uses:
+### Mouse-aware TUIs scroll properly
 
-- **[ghostty-web](https://github.com/ghostty-org/ghostty)** — the official Ghostty VT parser compiled to WebAssembly (WASM). This is the same `libghostty-vt` engine that powers the native Ghostty terminal app on macOS and Linux.
-- **A Python PTY proxy** (`pty_helper.py`) — spawns your actual shell in a real pseudo-terminal (PTY) and proxies I/O between it and the WASM terminal renderer. Uses Python's stdlib `pty` module — no native Node addons required.
-- **Canvas renderer** — `ghostty-web`'s `CanvasRenderer` draws the terminal to a `<canvas>` element pixel-perfectly using exact font metrics.
+This is the reason the plugin exists.
 
-This is **not** a wrapper around xterm.js. You get real Ghostty VT semantics: proper Unicode (grapheme clusters, wide chars), 256-color + truecolor, OSC 8 hyperlinks, Kitty graphics protocol, and more.
+Web terminals typically handle the scroll wheel in two branches: on the normal
+screen they scroll their own scrollback, and on the alternate screen they
+translate the wheel into Up and Down arrow keys. The arrow fallback is right
+for pagers like `less` and `man`. It is wrong for any TUI that enables mouse
+reporting and scrolls its own viewport — those apps never see the wheel events
+they are waiting for, and they read the arrow keys they get instead as
+navigation. Scrolling appears to do nothing, or does something surprising.
 
-
-## Screenshots
-
-![alt text](images/screenshot.png)
-![alt text](images/screenshot2.png)
-
----
-
-## Features
-
-| Feature | Details |
-|---|---|
-| 🖥️ **Real Ghostty VT parser** | `ghostty-web` WASM — identical behavior to native Ghostty |
-| 🎨 **Your Ghostty config** | Auto-reads `~/.config/ghostty/config` — font, font size, full 16-color palette |
-| 📐 **Pixel-perfect resize** | Canvas measures exact character cell dimensions; columns never misalign |
-| 🪟 **Multiple terminals / splits** | Each pane is fully independent; open as many as you need |
-| 📁 **File Explorer context menu** | Right-click any file or folder → **Open Ghostty Terminal here** |
-| 🔁 **Shell restart button** | If the shell exits, a ⟳ button appears inline — no plugin reload needed |
-| ⚙️ **Settings override** | Override shell, font, font size, and scrollback from Obsidian Settings |
-| 🚫 **No native addons** | Uses Python `pty` stdlib instead of `node-pty` — no `electron-rebuild` needed |
-
----
+Uncommon Terminal checks whether the running app is on the alternate screen
+*and* has asked for mouse tracking. When both hold, it encodes the wheel as a
+genuine mouse-button report — SGR when the app has negotiated DEC mode 1006,
+legacy X10 otherwise — and writes it to the PTY. Everything else falls through
+unchanged, so pagers keep their arrow keys.
 
 ## Requirements
 
-| Requirement | Minimum version |
-|---|---|
-| [Obsidian](https://obsidian.md) | 1.6.0 (desktop only) |
-| macOS / Linux | Any modern version |
-| Python | 3.8+ (ships with macOS and most Linux distros) |
-| Node.js | 18+ *(only needed to build from source)* |
-
-> **Windows:** The PTY proxy does not currently support Windows. macOS and Linux are fully supported.
-
----
-
-## Installation
-
-### Option A — BRAT (recommended for early access)
-
-[BRAT](https://github.com/TfTHacker/obsidian42-brat) lets you install plugins directly from GitHub without waiting for community approval.
-
-1. Install the **BRAT** plugin from Obsidian Community Plugins
-2. Open BRAT settings → **Add Beta Plugin**
-3. Enter the repository URL:
-   ```
-   https://github.com/lavs9/obsidian-ghostty-terminal
-   ```
-4. Click **Add Plugin** — BRAT will download and install it automatically
-5. Go to **Settings → Community plugins** and enable **Ghostty Terminal**
-
-### Option B — Manual install from GitHub release
-
-1. Go to the [Releases page](https://github.com/lavs9/obsidian-ghostty-terminal/releases) and download the latest release assets:
-   - `main.js`
-   - `manifest.json`
-   - `styles.css`
-   - `pty_helper.py`
-
-2. Create the plugin folder in your vault:
-   ```bash
-   mkdir -p /path/to/your-vault/.obsidian/plugins/ghostty-terminal
-   ```
-
-3. Copy the downloaded files into that folder
-
-4. In Obsidian: **Settings → Community plugins → Toggle "Restricted mode" OFF → Enable "Ghostty Terminal"**
-
-### Option C — Build from source
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/lavs9/obsidian-ghostty-terminal
-cd obsidian-ghostty-terminal
-
-# 2. Install dependencies
-npm install
-
-# 3. Build
-npm run build
-
-# 4. Copy plugin files to your vault
-VAULT=~/path/to/your-vault
-mkdir -p "$VAULT/.obsidian/plugins/ghostty-terminal"
-cp main.js manifest.json styles.css pty_helper.py "$VAULT/.obsidian/plugins/ghostty-terminal/"
-
-# 5. Enable in Obsidian
-# Settings → Community plugins → Enable "Ghostty Terminal"
-```
-
-#### Development (hot-reload)
-
-```bash
-# Symlink the repo directly into your vault's plugins folder for development
-ln -s "$(pwd)" ~/path/to/your-vault/.obsidian/plugins/ghostty-terminal
-
-# Start the watcher — rebuilds on every save
-npm run dev
-```
-
-Install the [Hot-Reload plugin](https://github.com/pjeby/hot-reload) in Obsidian to auto-reload the plugin on file change.
-
----
+- macOS or Linux. Windows is not supported.
+- Python 3, with the standard library intact. Almost certainly already present;
+  the plugin detects it and tells you plainly if it is missing.
+- Obsidian 1.7.2 or later, desktop only.
 
 ## Usage
 
-### Opening a terminal
+Open a terminal from the ribbon icon, or from the command palette:
 
-| Action | How |
-|---|---|
-| Open terminal | Click the **terminal** icon in the left ribbon, or run command **"Open Ghostty Terminal"** |
-| Open in new split | Command palette: **"Open Ghostty Terminal in new split"** |
-| Open at a specific path | Right-click any file or folder in the File Explorer → **"Open Ghostty Terminal here"** |
-| Restart shell | Click the **⟳ Restart shell** button that appears when the shell exits |
+| Command | What it does |
+| --- | --- |
+| **Open terminal** | Opens one, or focuses the terminal already open |
+| **Open terminal in a new split** | Always opens another, independent terminal |
+| **Restart the shell in this terminal** | Restarts the shell, keeping the scrollback |
 
-### Keyboard shortcuts
+Right-clicking a file or folder in the explorer offers **Open terminal here**,
+which starts a shell in that directory.
 
-You can assign custom hotkeys to **"Open Ghostty Terminal"** via **Settings → Hotkeys**.
-
----
+Every terminal is fully independent — its own shell, its own scrollback, its
+own working directory. Open as many as you like, in tabs, splits, sidebars, or
+a pop-out window.
 
 ## Configuration
 
-### Ghostty config auto-detection
+If you use [Ghostty][ghostty], the plugin reads your existing config from
+`~/.config/ghostty/config` (or the macOS Application Support location) and
+follows it for font, colors, cursor, scrollback, shell, and keybinds. Nothing
+to set up twice.
 
-The plugin automatically reads your Ghostty config from:
-- **macOS:** `~/Library/Application Support/com.mitchellh.ghostty/config`
-- **Linux:** `~/.config/ghostty/config`
-
-The following config keys are recognized:
-
-| Ghostty key | Effect |
-|---|---|
-| `font-family` | Terminal font family |
-| `font-size` | Terminal font size (pt) |
-| `background` | Background color |
-| `foreground` | Foreground/text color |
-| `cursor-color` | Cursor color |
-| `palette = N=RRGGBB` | All 16 ANSI color entries |
-| `cursor-style` | `block` / `underline` / `bar` |
-| `cursor-style-blink` | `true` / `false` |
-| `scrollback-limit` | Lines of scrollback buffer |
-| `command` | Default shell command |
-
-### Plugin settings
-
-Override any Ghostty config value from **Obsidian → Settings → Ghostty Terminal**:
-
-| Setting | Default | Description |
-|---|---|---|
-| Config file path | *(auto-detect)* | Explicit path to your Ghostty config file |
-| Default shell | `$SHELL` env var | Shell binary to spawn (e.g. `/bin/fish`) |
-| Font family override | *(from Ghostty config)* | Override font, e.g. `"Fira Code"` |
-| Font size override | *(from Ghostty config)* | Point size, e.g. `14` |
-| Scrollback lines | `10000` | Number of lines in the scrollback buffer |
-
----
-
-## Architecture
+Settings in Obsidian override that config where you set them, and the built-in
+palette is used only when neither has an opinion. So the resolution order is:
 
 ```
-obsidian-ghostty-terminal/
-├── main.ts                   Plugin entry + GhosttyTerminalView
-│                               - Registers view, ribbon, commands, context menu
-│                               - Boots ghostty-web WASM on startup
-│                               - Manages Terminal lifecycle (init, resize, dispose)
-│                               - Spawns pty_helper.py and proxies I/O
-├── src/
-│   ├── ghostty-config.ts     Ghostty config file parser
-│   │                           - Auto-detects config location on macOS + Linux
-│   │                           - Parses font, colors, cursor, scrollback, shell
-│   └── settings.ts           Plugin settings schema + Obsidian SettingTab UI
-├── pty_helper.py             Python PTY proxy (Unix only)
-│                               - Forks a real PTY via Python stdlib `pty.fork()`
-│                               - Proxies stdin/stdout between JS and shell
-│                               - Reads 4-byte resize frames on fd 3 (rows, cols)
-│                               - Calls TIOCSWINSZ to resize the PTY kernel window
-├── styles.css                Plugin CSS — scoped .ghostty-* classes
-├── manifest.json             Obsidian plugin manifest
-└── esbuild.config.mjs        Build config — bundles main.ts + ghostty-web WASM
+Obsidian settings  →  ~/.config/ghostty/config  →  built-in defaults
 ```
 
-### How the PTY bridge works
+Font, color, and scrollback changes apply to terminals that are already open.
 
+### Keybinds
+
+Keybinds from your Ghostty config are merged with a small built-in set and
+intercepted in the capture phase, so a key meant for the shell never reaches
+Obsidian's global hotkeys. The built-ins are copy, paste, and the
+kitty-protocol newlines for `shift+enter` and `cmd+enter` that TUIs use for a
+soft line break.
+
+## Installing
+
+From **Settings → Community plugins → Browse**, search for *Uncommon Terminal*.
+
+To build it yourself:
+
+```bash
+npm install
+npm run check                  # lint, tests, and a production build
+./deploy.sh /path/to/vault     # install into a vault
 ```
-Obsidian (Electron/Node.js)
-        │
-        ▼
-  child_process.spawn("python3 pty_helper.py /bin/zsh")
-        │ stdin  ──────────────────────────────► PTY master fd
-        │ stdout ◄────────────────────────────── PTY master fd
-        │ stdio[3] (resize pipe, write-only) ──► ioctl TIOCSWINSZ
-        │
-        ▼
-  ghostty-web Terminal (WASM + Canvas)
-    - terminal.write(data)    ← stdout bytes from PTY
-    - terminal.onData(cb)     → stdin bytes to PTY
-    - terminal.resize(c, r)   → 4-byte frame to resize pipe
-```
 
-### Why Python instead of node-pty?
+`npm run dev` watches and rebuilds. There is no `main.js` in the repo — it is
+a build artifact, published as a release asset.
 
-`node-pty` is a native Node.js addon that requires recompilation against Electron's version of V8 (`electron-rebuild`). This is fragile and breaks on Obsidian updates. Python's `pty` module is part of the standard library and works out of the box on any macOS or Linux machine — no compilation needed.
+## How it fits together
 
----
+Three layers and one process boundary:
 
-## Troubleshooting
+| Layer | What it is |
+| --- | --- |
+| `src/main.ts`, `src/view.ts` | The plugin and its view. One terminal per leaf, independent of the others. |
+| `ghostty-web` | libghostty's VT parser as WebAssembly, plus a canvas renderer. Booted once. |
+| `pty_helper.py` | A stdlib `pty` proxy, one process per terminal. |
 
-### Terminal shows "pty_helper.py not found"
+The helper's protocol is small and worth knowing if you touch either side:
+`argv[1]` is the shell, stdin and stdout carry raw bytes, and **fd 3 is a
+resize control pipe** taking 4-byte big-endian frames (rows `uint16`, cols
+`uint16`). The Python source is bundled into `main.js` as text and written next
+to the plugin whenever the copy on disk differs — so editing `pty_helper.py`
+does nothing until you rebuild.
 
-Make sure `pty_helper.py` is in the same folder as `main.js` inside `.obsidian/plugins/ghostty-terminal/`. If you installed from source, re-run the copy step.
+The pure logic — config parsing, keybind matching, wheel encoding — lives in
+modules with no DOM dependency and is covered by tests: `npm test`.
 
-### Shell doesn't start / shows Python error
+## Credits
 
-1. Verify Python 3 is available: `which python3`
-2. Check Obsidian's developer console (**View → Toggle Developer Tools → Console**) for the full error
+This plugin began as a fork of
+[**obsidian-ghostty-terminal**][upstream] by **Mayank Lavania**, which is where
+the Python-PTY approach and the initial Obsidian integration come from. That
+work is MIT licensed, and this one keeps its copyright alongside its own. Thank
+you.
 
-### Font looks wrong or spacing is off
+It has since been restructured, and the wheel handling, settings, process
+lifecycle, and test suite are new here.
 
-Set an explicit font in **Settings → Ghostty Terminal → Font family override**. Use a monospace font installed on your system, e.g. `"Menlo"`, `"Monaco"`, `"Fira Code"`, or `"JetBrains Mono"`.
-
-### Colors don't match my Ghostty theme
-
-The plugin reads your Ghostty config automatically. If colors look wrong:
-1. Check **Settings → Ghostty Terminal → Config file path** — leave blank for auto-detection
-2. Open the developer console and look for a `[GhosttyTerminal] config:` log line to see what was parsed
-
----
-
-## Contributing
-
-Pull requests are welcome! Please:
-
-1. Fork the repo and create a feature branch
-2. Run `npm run build` to verify there are no TypeScript errors
-3. Test in Obsidian with a real vault before submitting
-
----
-
-## Roadmap
-
-- [ ] Obsidian theme sync (auto-switch light/dark palette)
-- [ ] OSC 633 shell integration (prompt anchoring, command detection)
-- [ ] Tab bar for multiple terminals in a single pane
-- [ ] Windows support via ConPTY
-- [ ] Submit to Obsidian Community Plugins registry
-
----
+- [`ghostty-web`][ghostty-web] by Coder — MIT
+- [Ghostty][ghostty] by Mitchell Hashimoto, whose VT parser and config format
+  this builds on. This plugin is not affiliated with the Ghostty project.
 
 ## License
 
-MIT © [Mayank Lavania](https://github.com/lavs9)
+MIT. See [LICENSE](LICENSE).
+
+[upstream]: https://github.com/lavs9/obsidian-ghostty-terminal
+[ghostty-web]: https://github.com/coder/ghostty-web
+[ghostty]: https://ghostty.org

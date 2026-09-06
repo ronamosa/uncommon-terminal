@@ -1,154 +1,194 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import type GhosttyTerminalPlugin from '../main';
 
-export interface GhosttyTerminalSettings {
-    /** Location to open the terminal by default */
-    defaultLocation: 'right' | 'left' | 'tab' | 'split' | 'window';
-    /** Override path to Ghostty config file. Empty = auto-detect. */
-    ghosttyConfigPath: string;
-    /** Default shell. Empty = use $SHELL env. */
-    defaultShell: string;
-    /** Override font family (empty = read from Ghostty config). */
-    fontFamilyOverride: string;
-    /** Override font size (0 = read from Ghostty config). */
-    fontSizeOverride: number;
-    /** Enable font ligatures */
-    ligatures: boolean;
-    /** Number of scrollback lines */
-    scrollbackLines: number;
+import type UncommonTerminalPlugin from './main';
+
+export type PaneLocation = 'right' | 'left' | 'tab' | 'split' | 'window';
+
+/** Cursor shape, or the empty string to defer to the Ghostty config. */
+export type CursorStyleSetting = '' | 'block' | 'bar' | 'underline';
+
+/** Cursor blink, or 'default' to defer to the Ghostty config. */
+export type CursorBlinkSetting = 'default' | 'on' | 'off';
+
+/** Used when neither the settings nor the Ghostty config name a scrollback. */
+export const FALLBACK_SCROLLBACK = 10000;
+
+/** Enough scrollback to be useful, few enough lines to stay responsive. */
+const MAX_SCROLLBACK = 1000000;
+
+/** Reads a scrollback field. Zero — an empty or unusable entry — means defer. */
+export function parseScrollback(raw: string): number {
+    const parsed = parseInt(raw.trim(), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.min(parsed, MAX_SCROLLBACK);
 }
 
-export const DEFAULT_SETTINGS: GhosttyTerminalSettings = {
+export interface UncommonTerminalSettings {
+    /** Where a terminal opens when no location is given. */
+    defaultLocation: PaneLocation;
+    /** Path to a Ghostty config file. Empty means auto-detect. */
+    ghosttyConfigPath: string;
+    /** Shell binary. Empty means $SHELL. */
+    defaultShell: string;
+    /** Python interpreter for the PTY helper. Empty means auto-detect. */
+    pythonPath: string;
+    /** Font family. Empty defers to the Ghostty config. */
+    fontFamilyOverride: string;
+    /** Font size. Zero defers to the Ghostty config. */
+    fontSizeOverride: number;
+    /** Lines of scrollback to keep. Zero defers to the Ghostty config. */
+    scrollbackLines: number;
+    /** Cursor shape. Empty defers to the Ghostty config. */
+    cursorStyleOverride: CursorStyleSetting;
+    /** Cursor blink. 'default' defers to the Ghostty config. */
+    cursorBlinkOverride: CursorBlinkSetting;
+}
+
+export const DEFAULT_SETTINGS: UncommonTerminalSettings = {
     defaultLocation: 'right',
     ghosttyConfigPath: '',
     defaultShell: '',
-    fontFamilyOverride: 'JetBrains Mono, Menlo, Consolas, monospace',
+    pythonPath: '',
+    fontFamilyOverride: '',
     fontSizeOverride: 0,
-    ligatures: true,
-    scrollbackLines: 10000,
+    scrollbackLines: 0,
+    cursorStyleOverride: '',
+    cursorBlinkOverride: 'default',
 };
 
-export class GhosttySettingTab extends PluginSettingTab {
-    plugin: GhosttyTerminalPlugin;
+/** How long to wait for typing to stop before persisting a text field. */
+const SAVE_DEBOUNCE_MS = 500;
 
-    constructor(app: App, plugin: GhosttyTerminalPlugin) {
+export class UncommonTerminalSettingTab extends PluginSettingTab {
+    private saveTimer: number | null = null;
+
+    constructor(app: App, private readonly plugin: UncommonTerminalPlugin) {
         super(app, plugin);
-        this.plugin = plugin;
     }
 
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
 
-        // --- Display ---
-        new Setting(containerEl).setName('Display').setHeading();
+        new Setting(containerEl).setName('Appearance').setHeading();
 
         new Setting(containerEl)
             .setName('Default location')
-            .setDesc('Where should the terminal launch by default?')
-            .addDropdown(dropdown =>
-                dropdown
-                    .addOption('right', 'Right sidebar')
-                    .addOption('left', 'Left sidebar')
-                    .addOption('tab', 'New tab')
-                    .addOption('split', 'New split')
-                    .addOption('window', 'Popout window')
-                    .setValue(this.plugin.settings.defaultLocation)
-                    .onChange(async (value: 'right' | 'left' | 'tab' | 'split' | 'window') => {
-                        this.plugin.settings.defaultLocation = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
+            .setDesc('Where a terminal opens when you use the ribbon icon or command.')
+            .addDropdown(dropdown => dropdown
+                .addOption('right', 'Right sidebar')
+                .addOption('left', 'Left sidebar')
+                .addOption('tab', 'New tab')
+                .addOption('split', 'New split')
+                .addOption('window', 'Pop-out window')
+                .setValue(this.plugin.settings.defaultLocation)
+                .onChange(value => this.save({ defaultLocation: value as PaneLocation })));
 
-        // --- Ghostty Config ---
+        new Setting(containerEl)
+            .setName('Font family')
+            .setDesc('Leave empty to use the font from your Ghostty config.')
+            .addText(text => text
+                .setValue(this.plugin.settings.fontFamilyOverride)
+                .onChange(value => this.saveSoon({ fontFamilyOverride: value })));
+
+        new Setting(containerEl)
+            .setName('Font size')
+            .setDesc('Leave empty to use the size from your Ghostty config.')
+            .addText(text => text
+                .setPlaceholder('13')
+                .setValue(this.plugin.settings.fontSizeOverride > 0
+                    ? String(this.plugin.settings.fontSizeOverride)
+                    : '')
+                .onChange(value => this.saveSoon({ fontSizeOverride: parseFloat(value) || 0 })));
+
+        new Setting(containerEl)
+            .setName('Scrollback lines')
+            .setDesc('How much output to keep above the visible screen. Leave empty to use the limit from your Ghostty config.')
+            .addText(text => text
+                .setPlaceholder(String(FALLBACK_SCROLLBACK))
+                .setValue(this.plugin.settings.scrollbackLines > 0
+                    ? String(this.plugin.settings.scrollbackLines)
+                    : '')
+                .onChange(value => this.saveSoon({ scrollbackLines: parseScrollback(value) })));
+
+        new Setting(containerEl)
+            .setName('Cursor style')
+            .setDesc('Shape of the cursor.')
+            .addDropdown(dropdown => dropdown
+                .addOption('', 'From Ghostty config')
+                .addOption('block', 'Block')
+                .addOption('bar', 'Bar')
+                .addOption('underline', 'Underline')
+                .setValue(this.plugin.settings.cursorStyleOverride)
+                .onChange(value => this.save({ cursorStyleOverride: value as CursorStyleSetting })));
+
+        new Setting(containerEl)
+            .setName('Cursor blink')
+            .addDropdown(dropdown => dropdown
+                .addOption('default', 'From Ghostty config')
+                .addOption('on', 'Blink')
+                .addOption('off', 'Steady')
+                .setValue(this.plugin.settings.cursorBlinkOverride)
+                .onChange(value => this.save({ cursorBlinkOverride: value as CursorBlinkSetting })));
+
+        new Setting(containerEl).setName('Shell').setHeading();
+
+        new Setting(containerEl)
+            .setName('Shell path')
+            .setDesc('Leave empty to use your login shell. Takes effect in terminals opened from now on.')
+            .addText(text => text
+                .setPlaceholder('/bin/zsh')
+                .setValue(this.plugin.settings.defaultShell)
+                .onChange(value => this.saveSoon({ defaultShell: value })));
+
+        new Setting(containerEl)
+            .setName('Python path')
+            .setDesc('Interpreter that runs the PTY helper. Leave empty to detect python3 automatically.')
+            .addText(text => text
+                .setPlaceholder('/usr/bin/python3')
+                .setValue(this.plugin.settings.pythonPath)
+                .onChange(value => this.saveSoon({ pythonPath: value })));
+
         new Setting(containerEl).setName('Ghostty config').setHeading();
 
         new Setting(containerEl)
             .setName('Config file path')
-            .setDesc('Path to your ghostty config file (leave blank to auto-detect).')
-            .addText(text =>
-                text
-                    .setValue(this.plugin.settings.ghosttyConfigPath)
-                    .onChange(async value => {
-                        this.plugin.settings.ghosttyConfigPath = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
+            .setDesc('Leave empty to look in the usual places. Reloaded when you change this.')
+            .addText(text => text
+                .setValue(this.plugin.settings.ghosttyConfigPath)
+                .onChange(value => this.saveSoon({ ghosttyConfigPath: value })));
+    }
 
-        // --- Shell ---
-        new Setting(containerEl).setName('Shell').setHeading();
+    override hide(): void {
+        this.flush();
+        super.hide();
+    }
 
-        new Setting(containerEl)
-            .setName('Default shell')
-            .setDesc('Path to shell binary (leave blank to use default shell).')
-            .addText(text =>
-                text
-                    .setPlaceholder('/bin/zsh')
-                    .setValue(this.plugin.settings.defaultShell)
-                    .onChange(async value => {
-                        this.plugin.settings.defaultShell = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
+    /** Persists a partial change and pushes it to every open terminal. */
+    private save(change: Partial<UncommonTerminalSettings>): void {
+        Object.assign(this.plugin.settings, change);
+        void this.plugin.saveSettings();
+    }
 
-        // --- Font (overrides) ---
-        new Setting(containerEl).setName('Font overrides').setHeading();
-        containerEl.createEl('small', {
-            text: 'These override values from your ghostty config (leave blank or 0 to use ghostty config values).',
-            cls: 'setting-item-description',
-        });
+    /**
+     * The same, coalesced. A text field fires `onChange` on every keystroke,
+     * and a save writes to disk and re-fits every open terminal — so typing a
+     * font name should not do that fifteen times.
+     */
+    private saveSoon(change: Partial<UncommonTerminalSettings>): void {
+        Object.assign(this.plugin.settings, change);
+        if (this.saveTimer !== null) activeWindow.clearTimeout(this.saveTimer);
+        this.saveTimer = activeWindow.setTimeout(() => {
+            this.saveTimer = null;
+            void this.plugin.saveSettings();
+        }, SAVE_DEBOUNCE_MS);
+    }
 
-        new Setting(containerEl)
-            .setName('Font family')
-            .setDesc('Override font family.')
-            .addText(text =>
-                text
-                    .setValue(this.plugin.settings.fontFamilyOverride)
-                    .onChange(async value => {
-                        this.plugin.settings.fontFamilyOverride = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        new Setting(containerEl)
-            .setName('Font size')
-            .setDesc('Override font size (set to 0 to use default).')
-            .addText(text =>
-                text
-                    .setPlaceholder('15')
-                    .setValue(this.plugin.settings.fontSizeOverride > 0 ? String(this.plugin.settings.fontSizeOverride) : '')
-                    .onChange(async value => {
-                        this.plugin.settings.fontSizeOverride = parseFloat(value) || 0;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        new Setting(containerEl)
-            .setName('Font ligatures')
-            .setDesc('Enable font ligatures (if supported by your font).')
-            .addToggle(toggle =>
-                toggle
-                    .setValue(this.plugin.settings.ligatures)
-                    .onChange(async value => {
-                        this.plugin.settings.ligatures = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        // --- Performance ---
-        new Setting(containerEl).setName('Performance').setHeading();
-
-        new Setting(containerEl)
-            .setName('Scrollback lines')
-            .setDesc('Number of lines to keep in scrollback buffer.')
-            .addText(text =>
-                text
-                    .setPlaceholder('10000')
-                    .setValue(String(this.plugin.settings.scrollbackLines))
-                    .onChange(async value => {
-                        this.plugin.settings.scrollbackLines = parseInt(value, 10) || 10000;
-                        await this.plugin.saveSettings();
-                    })
-            );
+    /** Writes a pending change out now, so closing settings never loses one. */
+    private flush(): void {
+        if (this.saveTimer === null) return;
+        activeWindow.clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+        void this.plugin.saveSettings();
     }
 }

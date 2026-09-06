@@ -1,21 +1,22 @@
 {
     "compilerOptions": {
         "baseUrl": ".",
-        "inlineSourceMap": true,
-        "inlineSources": true,
-        "module": "ESNext",
         "target": "ES2022",
-        "allowJs": true,
-        "noImplicitAny": true,
+        "module": "ESNext",
         "moduleResolution": "node",
+        "lib": ["ES2022", "DOM"],
+        "types": ["node"],
+        "allowJs": true,
+        "strict": true,
+        "noImplicitOverride": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
         "importHelpers": true,
         "isolatedModules": true,
-        "strictNullChecks": true,
         "esModuleInterop": true,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "inlineSourceMap": true,
+        "inlineSources": true
     },
-    "include": [
-        "**/*.ts",
-        "src/env.d.ts"
-    ]
+    "include": ["src/**/*.ts", "tests/**/*.ts"]
 }
