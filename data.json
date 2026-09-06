@@ -1,9 +1,0 @@
-{
-  "defaultLocation": "right",
-  "ghosttyConfigPath": "",
-  "defaultShell": "",
-  "fontFamilyOverride": "JetBrains Mono, Menlo, Consolas, monospace",
-  "fontSizeOverride": 12,
-  "ligatures": true,
-  "scrollbackLines": 10000
-}

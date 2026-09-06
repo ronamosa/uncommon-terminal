@@ -1,21 +1,39 @@
 {
-    "name": "obsidian-ghostty-uncommon",
-    "version": "0.2.0",
-    "description": "Ghostty Terminal for Obsidian",
+    "name": "uncommon-terminal",
+    "version": "1.0.0",
+    "description": "Run a real shell in an Obsidian pane, rendered by Ghostty's terminal parser.",
     "main": "main.js",
+    "type": "commonjs",
     "scripts": {
         "dev": "node esbuild.config.mjs",
         "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
         "lint": "eslint .",
+        "test": "tsx --test tests/*.test.ts",
+        "check": "npm run lint && npm test && npm run build",
         "version": "node version-bump.mjs && git add manifest.json versions.json"
     },
+    "keywords": [
+        "obsidian",
+        "obsidian-plugin",
+        "terminal",
+        "ghostty",
+        "shell",
+        "pty"
+    ],
+    "author": "Ron Amosa",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ronamosa/uncommon-terminal.git"
+    },
+    "bugs": {
+        "url": "https://github.com/ronamosa/uncommon-terminal/issues"
+    },
+    "homepage": "https://github.com/ronamosa/uncommon-terminal#readme",
     "dependencies": {
-        "ghostty-web": "^0.4.0",
-        "node-pty": "^1.1.0",
-        "node-pty-prebuilt-multiarch": "^0.10.1-pre.5"
+        "ghostty-web": "^0.4.0"
     },
     "devDependencies": {
-        "@eslint/eslintrc": "^3.3.4",
         "@types/node": "^20",
         "@typescript-eslint/eslint-plugin": "^8.56.1",
         "@typescript-eslint/parser": "^8.56.1",
@@ -25,21 +43,8 @@
         "globals": "^17.4.0",
         "obsidian": "latest",
         "tslib": "2.6.2",
-        "typescript": "5.5.4"
-    },
-    "directories": {
-        "doc": "docs"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/lavs9/obsidian-ghostty-terminal.git"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "type": "commonjs",
-    "bugs": {
-        "url": "https://github.com/lavs9/obsidian-ghostty-terminal/issues"
-    },
-    "homepage": "https://github.com/lavs9/obsidian-ghostty-terminal#readme"
+        "tsx": "^4.23.13",
+        "typescript": "5.5.4",
+        "typescript-eslint": "^8.69.0"
+    }
 }

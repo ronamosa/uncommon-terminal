@@ -1,29 +1,16 @@
-# Dependencies
 node_modules/
 
-# Build cache / local dev tool state
-.bv/
-.cass/
+# Build output. Released as a GitHub release asset, not committed.
+main.js
+*.js.map
+
+# Plugin settings, written at runtime inside a vault.
+data.json
 
 # macOS
 .DS_Store
-.AppleDouble
-.LSOverride
 
-# Editor
+# Editors
 .vscode/
 .idea/
 *.swp
-*.swo
-
-# Env / secrets
-.env
-.env.local
-
-# NOTE: main.js IS committed intentionally — Obsidian loads it directly.
-# To exclude it from the repo (source-only mode), uncomment the next line:
-# main.js
-
-# Dolt database files (added by bd init)
-.dolt/
-*.db
