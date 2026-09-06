@@ -7,13 +7,14 @@ import type UncommonTerminalPlugin from './main';
 import { buildEffectiveKeybinds, findKeybind, unescapeGhosttyText, type Keybind } from './keybinds';
 import { PtySession, resolvePython } from './pty';
 import { FALLBACK_SCROLLBACK } from './settings';
-import { buildTheme } from './theme';
+import { buildTheme, cssVarLookup } from './theme';
 import { encodeWheelReport, type WheelGeometry } from './wheel';
 
 import ptyHelperCode from '../pty_helper.py';
 
 export const VIEW_TYPE_TERMINAL = 'uncommon-terminal';
 
+/** Used only when Obsidian's own monospace variable is missing. */
 const DEFAULT_FONT_STACK = 'Menlo, Monaco, "Courier New", monospace';
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_CURSOR_STYLE = 'block';
@@ -83,7 +84,7 @@ export class TerminalView extends ItemView {
         const terminal = new Terminal({
             fontFamily: this.fontFamily(),
             fontSize: this.fontSize(),
-            theme: buildTheme(this.plugin.ghosttyConfig, this.containerEl),
+            theme: buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl)),
             scrollback: this.scrollback(),
             cursorStyle: this.cursorStyle(),
             cursorBlink: this.cursorBlink(),
@@ -104,9 +105,15 @@ export class TerminalView extends ItemView {
         this.fitAddon.fit();
     }
 
+    /**
+     * Falls back to Obsidian's monospace font — the one set in Appearance —
+     * before the built-in stack, so a fresh install matches the vault's code
+     * font rather than overriding it with Menlo.
+     */
     private fontFamily(): string {
         return this.plugin.settings.fontFamilyOverride
             || this.plugin.ghosttyConfig.fontFamily
+            || cssVarLookup(this.containerEl)('--font-monospace')
             || DEFAULT_FONT_STACK;
     }
 
@@ -145,7 +152,7 @@ export class TerminalView extends ItemView {
 
         terminal.options.fontFamily = this.fontFamily();
         terminal.options.fontSize = this.fontSize();
-        terminal.options.theme = buildTheme(this.plugin.ghosttyConfig, this.containerEl);
+        terminal.options.theme = buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl));
         terminal.options.scrollback = this.scrollback();
         terminal.options.cursorStyle = this.cursorStyle();
         terminal.options.cursorBlink = this.cursorBlink();
