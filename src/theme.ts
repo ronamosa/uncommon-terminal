@@ -163,12 +163,21 @@ export function isDarkBackground(value: string | undefined): boolean {
     return (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255 < 0.5;
 }
 
+/** Colors set in the plugin's own settings, which outrank every other source. */
+export type PaletteOverrides = Partial<Record<PaletteKey, string>>;
+
 /**
- * Builds the palette handed to the terminal: Ghostty config first, then
- * Obsidian's theme, then the fallback for whichever background we landed on.
+ * Builds the palette handed to the terminal: the plugin's settings first, then
+ * the Ghostty config, then Obsidian's theme, then the fallback for whichever
+ * background we landed on.
  */
-export function buildTheme(config: GhosttyConfig, lookup: VarLookup): Record<string, string> {
-    const background = config.colors.background
+export function buildTheme(
+    config: GhosttyConfig,
+    lookup: VarLookup,
+    overrides: PaletteOverrides = {},
+): Record<string, string> {
+    const background = overrides.background
+        ?? config.colors.background
         ?? lookup(OBSIDIAN_VARS.background as string);
     const fallback: Record<PaletteKey, string> =
         isDarkBackground(background) ? DARK_FALLBACK : LIGHT_FALLBACK;
@@ -179,6 +188,12 @@ export function buildTheme(config: GhosttyConfig, lookup: VarLookup): Record<str
     const fromTheme = new Set<PaletteKey>();
 
     for (const key of Object.keys(DARK_FALLBACK) as PaletteKey[]) {
+        const override = overrides[key];
+        if (override) {
+            theme[key] = override;
+            continue;
+        }
+
         const fromConfig = config.colors[key as keyof ThemeColors];
         if (fromConfig) {
             theme[key] = fromConfig;
@@ -200,8 +215,8 @@ export function buildTheme(config: GhosttyConfig, lookup: VarLookup): Record<str
     }
 
     for (const [bright, normal] of Object.entries(BRIGHT_OF) as [PaletteKey, PaletteKey][]) {
-        if (config.colors[bright as keyof ThemeColors]) continue;
-        if (!fromTheme.has(normal)) continue;
+        if (overrides[bright] || config.colors[bright as keyof ThemeColors]) continue;
+        if (!fromTheme.has(normal) && !overrides[normal]) continue;
         theme[bright] = lighten(theme[normal], BRIGHTEN);
     }
 

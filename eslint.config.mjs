@@ -25,7 +25,7 @@ export default tseslint.config(
             "obsidianmd/ui/sentence-case": [
                 "error",
                 {
-                    brands: ["Ghostty", "JetBrains", "Python", "Uncommon Terminal"],
+                    brands: ["Ghostty", "JetBrains", "Obsidian", "Python", "Uncommon Terminal"],
                     acronyms: ["PTY", "TUI", "UI"],
                     enforceCamelCaseLower: true,
                 },

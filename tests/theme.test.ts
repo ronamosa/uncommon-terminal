@@ -126,6 +126,35 @@ describe('buildTheme', () => {
         assert.equal(theme.brightRed, '#654321');
     });
 
+    it('lets a settings override win over everything', () => {
+        const config: GhosttyConfig = {
+            ...emptyGhosttyConfig(),
+            colors: { background: '#123456' },
+        };
+        const theme = buildTheme(config, lookupOf({ '--background-primary': '#ffffff' }), {
+            background: '#000000',
+            cursor: '#00ff00',
+        });
+
+        assert.equal(theme.background, '#000000');
+        assert.equal(theme.cursor, '#00ff00');
+    });
+
+    it('picks the fallback palette from an overridden background', () => {
+        const theme = buildTheme(emptyGhosttyConfig(), lookupOf({
+            '--background-primary': '#ffffff',
+        }), { background: '#000000' });
+
+        // Black background, so the dark palette — not the light one the vault
+        // would otherwise have chosen.
+        assert.equal(theme.black, DARK_FALLBACK.black);
+    });
+
+    it('derives a bright color from an overridden normal one', () => {
+        const theme = buildTheme(emptyGhosttyConfig(), NO_VARS, { red: '#000000' });
+        assert.equal(theme.brightRed, lighten('#000000', 0.12));
+    });
+
     it('never maps black or white to Obsidian, whose base scale inverts', () => {
         const dark = buildTheme(emptyGhosttyConfig(), lookupOf({
             '--background-primary': '#000000',
