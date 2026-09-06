@@ -67,11 +67,28 @@ via esbuild's `.py: text` loader and `src/env.d.ts`) and rewritten through the
 vault adapter on spawn whenever the on-disk copy differs — **so editing
 `pty_helper.py` alone does nothing until you rebuild**.
 
-Config resolution for shell, font, and colors: Obsidian settings →
-`~/.config/ghostty/config` (parsed by `src/ghostty-config.ts`) → built-in
-fallback. Ghostty keybinds from that config merge with `BUILTIN_KEYBINDS` and
-are intercepted in the **capture phase**, so Obsidian's global hotkeys never
-see keys meant for the terminal.
+Config resolution for shell, font, cursor, scrollback, and colors: Obsidian
+settings → `~/.config/ghostty/config` (parsed by `src/ghostty-config.ts`) →
+the vault's own theme → built-in fallback. Every setting that can defer uses a
+sentinel for it — an empty string, or zero — so "unset" is a real state rather
+than a value that happens to match the default.
+
+`theme = <name>` in the Ghostty config names another file in the same format;
+`resolveTheme` finds it across the directories Ghostty searches and reads it
+with the same parser, so a theme is a floor that the config's own colors still
+override. The `dark:One,light:Other` form follows the vault.
+
+The vault-theme layer is `src/theme.ts`. It borrows Obsidian's accent variables
+(`--color-red` and friends) for the ANSI hues and `--font-monospace` for the
+font, so a fresh install looks like the vault. Black and white are pointedly
+*not* mapped: `--color-base-*` inverts between light and dark, but ANSI colour 0
+has to stay the darker of the pair either way, so those come from a fallback
+palette picked by the background's luminance. `buildTheme` takes a `VarLookup`
+rather than an element, which is what keeps it testable.
+
+Ghostty keybinds from that config merge with `BUILTIN_KEYBINDS` and are
+intercepted in the **capture phase**, so Obsidian's global hotkeys never see
+keys meant for the terminal.
 
 Sizing is the FitAddon's job. It fits to the container, and `terminal.onResize`
 pushes the new rows/cols down fd 3. Do not reintroduce manual glyph

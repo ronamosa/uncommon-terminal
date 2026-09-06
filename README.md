@@ -73,14 +73,21 @@ If you use [Ghostty][ghostty], the plugin reads your existing config from
 follows it for font, colors, cursor, scrollback, shell, and keybinds. Nothing
 to set up twice.
 
-Settings in Obsidian override that config where you set them, and the built-in
-palette is used only when neither has an opinion. So the resolution order is:
+Colors set with `theme = <name>` are resolved too, including the
+`dark:One,light:Other` form, which follows whether your vault is in light or
+dark mode.
+
+Settings in Obsidian override that config where you set them. Where neither has
+an opinion, the terminal borrows the vault's own appearance — its monospace
+font and its accent colors — before falling back to a built-in palette chosen
+for a light or dark background. So the resolution order is:
 
 ```
-Obsidian settings  →  ~/.config/ghostty/config  →  built-in defaults
+Obsidian settings  →  ~/.config/ghostty/config  →  your Obsidian theme  →  built-in defaults
 ```
 
-Font, color, and scrollback changes apply to terminals that are already open.
+Font, color, cursor, and scrollback changes apply to terminals that are already
+open, and the palette follows the vault when you switch between light and dark.
 
 ### Keybinds
 
