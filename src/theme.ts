@@ -185,8 +185,11 @@ export function buildTheme(config: GhosttyConfig, lookup: VarLookup): Record<str
             continue;
         }
 
+        // A variable that resolves to something we cannot parse — an unresolved
+        // `var()`, a keyword — is no use to the renderer, so treat it as unset.
         const varName = OBSIDIAN_VARS[key];
-        const fromObsidian = varName ? lookup(varName) : undefined;
+        const looked = varName ? lookup(varName) : undefined;
+        const fromObsidian = looked && parseColor(looked) ? looked : undefined;
         if (fromObsidian) {
             theme[key] = fromObsidian;
             fromTheme.add(key);

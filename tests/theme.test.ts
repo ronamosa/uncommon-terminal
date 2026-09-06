@@ -105,6 +105,15 @@ describe('buildTheme', () => {
         assert.equal(theme.brightRed, DARK_FALLBACK.brightRed);
     });
 
+    it('ignores a variable that does not parse as a color', () => {
+        const theme = buildTheme(emptyGhosttyConfig(), lookupOf({
+            '--color-red': 'var(--color-base-00)',
+        }));
+
+        assert.equal(theme.red, DARK_FALLBACK.red);
+        assert.equal(theme.brightRed, DARK_FALLBACK.brightRed);
+    });
+
     it('lets the Ghostty config win over the vault theme', () => {
         const config: GhosttyConfig = {
             ...emptyGhosttyConfig(),
