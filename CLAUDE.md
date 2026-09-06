@@ -78,6 +78,21 @@ than a value that happens to match the default.
 with the same parser, so a theme is a floor that the config's own colors still
 override. The `dark:One,light:Other` form follows the vault.
 
+The WASM buffer is handed **black** as its default background rather than the
+real one. It bakes its configured background into every cell it writes and has
+no setter, so a recolor can never reach cells already on screen — they repaint
+themselves in the old color, over the new one, leaving only the scrollbar
+trough looking right. Black is the one value `renderCellBackground` treats as
+unset and skips, which hands the background to the renderer's theme, where
+`setTheme` plus one forced full render can change it live. The cost is that a
+program painting an explicit black background is indistinguishable from one
+painting none. Text color has no such escape hatch and applies only to
+terminals opened afterwards.
+
+Assigning `terminal.options.theme` does nothing once a terminal is open —
+ghostty-web warns and returns. Fonts, cursor, and scrollback *do* apply that
+way; the theme has to go through `renderer.setTheme`.
+
 The vault-theme layer is `src/theme.ts`. It borrows Obsidian's accent variables
 (`--color-red` and friends) for the ANSI hues and `--font-monospace` for the
 font, so a fresh install looks like the vault. Black and white are pointedly
