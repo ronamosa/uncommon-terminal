@@ -144,7 +144,10 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
             .setDesc('Left unset, colors follow your Ghostty config, then your Obsidian theme.');
 
         this.addColorSetting('Background', 'backgroundOverride', '#000000');
-        this.addColorSetting('Text', 'foregroundOverride', '#cccccc');
+        // Unlike the background, text color is baked into cells by the buffer,
+        // which has no setter — so it cannot be changed under a running shell.
+        this.addColorSetting('Text', 'foregroundOverride', '#cccccc',
+            'Takes effect in terminals opened from now on.');
         this.addColorSetting('Cursor', 'cursorColorOverride', '#00ff00');
 
         new Setting(containerEl).setName('Shell').setHeading();
@@ -184,12 +187,14 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
         name: string,
         key: 'backgroundOverride' | 'foregroundOverride' | 'cursorColorOverride',
         sample: string,
+        note?: string,
     ): void {
         const current = this.plugin.settings[key];
+        const state = current ? current : 'Automatic';
 
         new Setting(this.containerEl)
             .setName(name)
-            .setDesc(current ? current : 'Automatic')
+            .setDesc(note ? `${state} — ${note}` : state)
             .addColorPicker(picker => picker
                 .setValue(current || sample)
                 .onChange(value => {

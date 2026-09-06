@@ -19,6 +19,19 @@ const DEFAULT_FONT_STACK = 'Menlo, Monaco, "Courier New", monospace';
 const DEFAULT_FONT_SIZE = 13;
 const DEFAULT_CURSOR_STYLE = 'block';
 
+/**
+ * What the WASM buffer is told its default background is.
+ *
+ * The buffer bakes its configured background into every cell it writes and
+ * exposes no setter, so a recolor could never reach cells already on screen —
+ * they would repaint themselves in the old color, over the new one. Black is
+ * the one value the renderer treats as "unset" and skips, which leaves the
+ * background to the renderer's own theme, where it *can* change. The cost is
+ * that a program painting an explicit black background is indistinguishable
+ * from one painting none.
+ */
+const WASM_DEFAULT_BACKGROUND = '#000000';
+
 /** One terminal, one shell, one leaf. Views are fully independent of each other. */
 export class TerminalView extends ItemView {
     private terminal: Terminal | null = null;
@@ -81,10 +94,16 @@ export class TerminalView extends ItemView {
         const screenEl = this.screenEl;
         if (!screenEl) return;
 
+        const theme = buildTheme(
+            this.plugin.ghosttyConfig,
+            cssVarLookup(this.containerEl),
+            this.paletteOverrides(),
+        );
+
         const terminal = new Terminal({
             fontFamily: this.fontFamily(),
             fontSize: this.fontSize(),
-            theme: buildTheme(this.plugin.ghosttyConfig, cssVarLookup(this.containerEl), this.paletteOverrides()),
+            theme: { ...theme, background: WASM_DEFAULT_BACKGROUND },
             scrollback: this.scrollback(),
             cursorStyle: this.cursorStyle(),
             cursorBlink: this.cursorBlink(),
@@ -103,6 +122,9 @@ export class TerminalView extends ItemView {
         this.registerDomEvent(screenEl, 'keydown', ev => this.handleKeydown(ev), { capture: true });
 
         this.fitAddon.fit();
+        // The constructor handed the buffer a black background; the renderer
+        // gets the real one.
+        this.applyTheme();
     }
 
     /**
