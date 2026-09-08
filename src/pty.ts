@@ -172,7 +172,7 @@ export class PtySession {
 
         const pid = proc.pid;
         if (pid === undefined) return;
-        setTimeout(() => {
+        window.setTimeout(() => {
             try {
                 process.kill(pid, 0); // throws if it already exited
                 process.kill(pid, 'SIGKILL');

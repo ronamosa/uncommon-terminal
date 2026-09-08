@@ -13,7 +13,7 @@ import {
 import { TerminalView, VIEW_TYPE_TERMINAL } from './view';
 
 export default class UncommonTerminalPlugin extends Plugin {
-    settings: UncommonTerminalSettings = { ...DEFAULT_SETTINGS };
+    override settings: UncommonTerminalSettings = { ...DEFAULT_SETTINGS };
     ghosttyConfig: GhosttyConfig = emptyGhosttyConfig();
 
     /** What the loaded config was read for, so a save can skip re-reading it. */

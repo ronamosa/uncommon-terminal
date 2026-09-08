@@ -120,12 +120,33 @@ its own viewport. `TerminalView.handleWheel` takes over only when
 event as a mouse-button report (SGR under DEC mode 1006, legacy X10 otherwise).
 Everything else returns `false` and falls through unchanged.
 
+### The settings tab
+
+`getSettingDefinitions` is the source of truth: Obsidian 1.13 renders from it
+and indexes it for the settings search, which is what the plugin scorecard
+checks for. `minAppVersion` is still 1.7.2, so `display()` stays as the
+pre-1.13 fallback — but it *walks the same definitions* rather than restating
+them, and adding a control type to the definitions means teaching
+`displayOne` to render it. `getControlValue`/`setControlValue` are the bridge
+to `plugin.settings`: they map the two number-backed fields to and from text,
+so an empty field still means "defer", and they route writes through
+`saveSettings` (which pushes to open terminals) instead of the base class's
+plain `saveData`.
+
+The color rows are `render` definitions, not controls, because a picker always
+holds a color — "unset" needs a reset button that no declarative control
+offers. Their `desc` shows the current state, so changing one has to re-run the
+definitions: `redraw()` calls `update()` on 1.13 and falls back to `display()`.
+
 ## Conventions
 
 - Follow the [Obsidian plugin guidelines][guidelines]; `eslint-plugin-obsidianmd`
   enforces much of it. In particular: `activeDocument`/`activeWindow` over the
   globals, CSS classes over inline styles, Obsidian CSS variables over hard-coded
-  colors, sentence case in UI strings, and no `innerHTML`.
+  colors, sentence case in UI strings, and no `innerHTML`. Timers are the one
+  exception to `activeWindow`: the guidelines want `window.setTimeout` and
+  `window.clearTimeout`, so that a handle is a number and not a
+  `NodeJS.Timeout`.
 - Reach for the vault adapter, not node `fs`, for anything inside the vault.
 - Pure logic goes in a DOM-free module with tests. `wheel.ts`, `keybinds.ts`,
   and the `parseGhosttyConfigText` half of `ghostty-config.ts` are the pattern.

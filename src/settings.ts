@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem } from 'obsidian';
 
 import type UncommonTerminalPlugin from './main';
 
@@ -68,6 +69,19 @@ export const DEFAULT_SETTINGS: UncommonTerminalSettings = {
 /** How long to wait for typing to stop before persisting a text field. */
 const SAVE_DEBOUNCE_MS = 500;
 
+/** Settings whose control is a text field, and so should save on a debounce. */
+const DEBOUNCED_KEYS: ReadonlySet<string> = new Set([
+    'fontFamilyOverride',
+    'fontSizeOverride',
+    'scrollbackLines',
+    'defaultShell',
+    'pythonPath',
+    'ghosttyConfigPath',
+]);
+
+/** Numbers held in a text field, where an empty field means "defer". */
+const NUMERIC_KEYS: ReadonlySet<string> = new Set(['fontSizeOverride', 'scrollbackLines']);
+
 export class UncommonTerminalSettingTab extends PluginSettingTab {
     private saveTimer: number | null = null;
 
@@ -75,140 +89,257 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
         super(app, plugin);
     }
 
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
-
-        new Setting(containerEl).setName('Appearance').setHeading();
-
-        new Setting(containerEl)
-            .setName('Default location')
-            .setDesc('Where a terminal opens when you use the ribbon icon or command.')
-            .addDropdown(dropdown => dropdown
-                .addOption('right', 'Right sidebar')
-                .addOption('left', 'Left sidebar')
-                .addOption('tab', 'New tab')
-                .addOption('split', 'New split')
-                .addOption('window', 'Pop-out window')
-                .setValue(this.plugin.settings.defaultLocation)
-                .onChange(value => this.save({ defaultLocation: value as PaneLocation })));
-
-        new Setting(containerEl)
-            .setName('Font family')
-            .setDesc('Leave empty to use the font from your Ghostty config.')
-            .addText(text => text
-                .setValue(this.plugin.settings.fontFamilyOverride)
-                .onChange(value => this.saveSoon({ fontFamilyOverride: value })));
-
-        new Setting(containerEl)
-            .setName('Font size')
-            .setDesc('Leave empty to use the size from your Ghostty config.')
-            .addText(text => text
-                .setPlaceholder('13')
-                .setValue(this.plugin.settings.fontSizeOverride > 0
-                    ? String(this.plugin.settings.fontSizeOverride)
-                    : '')
-                .onChange(value => this.saveSoon({ fontSizeOverride: parseFloat(value) || 0 })));
-
-        new Setting(containerEl)
-            .setName('Scrollback lines')
-            .setDesc('How much output to keep above the visible screen. Leave empty to use the limit from your Ghostty config.')
-            .addText(text => text
-                .setPlaceholder(String(FALLBACK_SCROLLBACK))
-                .setValue(this.plugin.settings.scrollbackLines > 0
-                    ? String(this.plugin.settings.scrollbackLines)
-                    : '')
-                .onChange(value => this.saveSoon({ scrollbackLines: parseScrollback(value) })));
-
-        new Setting(containerEl)
-            .setName('Cursor style')
-            .setDesc('Shape of the cursor.')
-            .addDropdown(dropdown => dropdown
-                .addOption('', 'From Ghostty config')
-                .addOption('block', 'Block')
-                .addOption('bar', 'Bar')
-                .addOption('underline', 'Underline')
-                .setValue(this.plugin.settings.cursorStyleOverride)
-                .onChange(value => this.save({ cursorStyleOverride: value as CursorStyleSetting })));
-
-        new Setting(containerEl)
-            .setName('Cursor blink')
-            .addDropdown(dropdown => dropdown
-                .addOption('default', 'From Ghostty config')
-                .addOption('on', 'Blink')
-                .addOption('off', 'Steady')
-                .setValue(this.plugin.settings.cursorBlinkOverride)
-                .onChange(value => this.save({ cursorBlinkOverride: value as CursorBlinkSetting })));
-
-        new Setting(containerEl).setName('Colors').setHeading()
-            .setDesc('Left unset, colors follow your Ghostty config, then your Obsidian theme.');
-
-        this.addColorSetting('Background', 'backgroundOverride', '#000000');
-        // Unlike the background, text color is baked into cells by the buffer,
-        // which has no setter — so it cannot be changed under a running shell.
-        this.addColorSetting('Text', 'foregroundOverride', '#cccccc',
-            'Takes effect in terminals opened from now on.');
-        this.addColorSetting('Cursor', 'cursorColorOverride', '#00ff00');
-
-        new Setting(containerEl).setName('Shell').setHeading();
-
-        new Setting(containerEl)
-            .setName('Shell path')
-            .setDesc('Leave empty to use your login shell. Takes effect in terminals opened from now on.')
-            .addText(text => text
-                .setPlaceholder('/bin/zsh')
-                .setValue(this.plugin.settings.defaultShell)
-                .onChange(value => this.saveSoon({ defaultShell: value })));
-
-        new Setting(containerEl)
-            .setName('Python path')
-            .setDesc('Interpreter that runs the PTY helper. Leave empty to detect python3 automatically.')
-            .addText(text => text
-                .setPlaceholder('/usr/bin/python3')
-                .setValue(this.plugin.settings.pythonPath)
-                .onChange(value => this.saveSoon({ pythonPath: value })));
-
-        new Setting(containerEl).setName('Ghostty config').setHeading();
-
-        new Setting(containerEl)
-            .setName('Config file path')
-            .setDesc('Leave empty to look in the usual places. Reloaded when you change this.')
-            .addText(text => text
-                .setValue(this.plugin.settings.ghosttyConfigPath)
-                .onChange(value => this.saveSoon({ ghosttyConfigPath: value })));
+    /**
+     * The declarative form, which Obsidian 1.13 and later renders itself and
+     * indexes for the settings search.
+     */
+    override getSettingDefinitions(): SettingDefinitionItem[] {
+        return [
+            {
+                type: 'group',
+                heading: 'Appearance',
+                items: [
+                    {
+                        name: 'Default location',
+                        desc: 'Where a terminal opens when you use the ribbon icon or command.',
+                        control: {
+                            type: 'dropdown',
+                            key: 'defaultLocation',
+                            options: {
+                                right: 'Right sidebar',
+                                left: 'Left sidebar',
+                                tab: 'New tab',
+                                split: 'New split',
+                                window: 'Pop-out window',
+                            },
+                        },
+                    },
+                    {
+                        name: 'Font family',
+                        desc: 'Leave empty to use the font from your Ghostty config.',
+                        control: { type: 'text', key: 'fontFamilyOverride' },
+                    },
+                    {
+                        name: 'Font size',
+                        desc: 'Leave empty to use the size from your Ghostty config.',
+                        control: { type: 'text', key: 'fontSizeOverride', placeholder: '13' },
+                    },
+                    {
+                        name: 'Scrollback lines',
+                        desc: 'How much output to keep above the visible screen. Leave empty to use the limit from your Ghostty config.',
+                        control: {
+                            type: 'text',
+                            key: 'scrollbackLines',
+                            placeholder: String(FALLBACK_SCROLLBACK),
+                        },
+                    },
+                    {
+                        name: 'Cursor style',
+                        desc: 'Shape of the cursor.',
+                        control: {
+                            type: 'dropdown',
+                            key: 'cursorStyleOverride',
+                            options: {
+                                '': 'From Ghostty config',
+                                block: 'Block',
+                                bar: 'Bar',
+                                underline: 'Underline',
+                            },
+                        },
+                    },
+                    {
+                        name: 'Cursor blink',
+                        control: {
+                            type: 'dropdown',
+                            key: 'cursorBlinkOverride',
+                            options: {
+                                default: 'From Ghostty config',
+                                on: 'Blink',
+                                off: 'Steady',
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: 'Colors',
+                items: [
+                    this.colorDefinition('Background', 'backgroundOverride', '#000000'),
+                    // Unlike the background, text color is baked into cells by
+                    // the buffer, which has no setter — so it cannot be changed
+                    // under a running shell.
+                    this.colorDefinition('Text', 'foregroundOverride', '#cccccc',
+                        'Takes effect in terminals opened from now on.'),
+                    this.colorDefinition('Cursor', 'cursorColorOverride', '#00ff00'),
+                ],
+            },
+            {
+                type: 'group',
+                heading: 'Shell',
+                items: [
+                    {
+                        name: 'Shell path',
+                        desc: 'Leave empty to use your login shell. Takes effect in terminals opened from now on.',
+                        control: { type: 'text', key: 'defaultShell', placeholder: '/bin/zsh' },
+                    },
+                    {
+                        name: 'Python path',
+                        desc: 'Interpreter that runs the PTY helper. Leave empty to detect python3 automatically.',
+                        control: { type: 'text', key: 'pythonPath', placeholder: '/usr/bin/python3' },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: 'Ghostty config',
+                items: [
+                    {
+                        name: 'Config file path',
+                        desc: 'Leave empty to look in the usual places. Reloaded when you change this.',
+                        control: { type: 'text', key: 'ghosttyConfigPath' },
+                    },
+                ],
+            },
+        ];
     }
 
     /**
      * One color row: a picker, and a reset that puts the slot back to being
      * resolved rather than set. A picker always holds a color, so "unset" needs
-     * its own affordance.
+     * its own affordance, which no declarative control offers — hence `render`.
      */
-    private addColorSetting(
+    private colorDefinition(
         name: string,
         key: 'backgroundOverride' | 'foregroundOverride' | 'cursorColorOverride',
         sample: string,
         note?: string,
-    ): void {
+    ): SettingDefinition {
         const current = this.plugin.settings[key];
-        const state = current ? current : 'Automatic';
+        const state = current
+            ? `${current}.`
+            : 'Automatic — follows your Ghostty config, then your Obsidian theme.';
 
-        new Setting(this.containerEl)
-            .setName(name)
-            .setDesc(note ? `${state} — ${note}` : state)
-            .addColorPicker(picker => picker
-                .setValue(current || sample)
-                .onChange(value => {
-                    this.save({ [key]: value });
-                    this.display();
-                }))
-            .addExtraButton(button => button
-                .setIcon('rotate-ccw')
-                .setTooltip('Reset to automatic')
-                .setDisabled(!current)
-                .onClick(() => {
-                    this.save({ [key]: '' });
-                    this.display();
-                }));
+        return {
+            name,
+            desc: note ? `${state} ${note}` : state,
+            aliases: ['color'],
+            render: setting => {
+                setting
+                    .addColorPicker(picker => picker
+                        .setValue(current || sample)
+                        .onChange(value => {
+                            this.save({ [key]: value });
+                            this.redraw();
+                        }))
+                    .addExtraButton(button => button
+                        .setIcon('rotate-ccw')
+                        .setTooltip('Reset to automatic')
+                        .setDisabled(!current)
+                        .onClick(() => {
+                            this.save({ [key]: '' });
+                            this.redraw();
+                        }));
+            },
+        };
+    }
+
+    /**
+     * The imperative fallback, which Obsidian only calls before 1.13. It walks
+     * the same definitions rather than restating them, so the two forms cannot
+     * drift apart.
+     */
+    override display(): void {
+        const { containerEl } = this;
+        containerEl.empty();
+
+        for (const item of this.getSettingDefinitions()) {
+            if (!('type' in item)) {
+                this.displayOne(item);
+                continue;
+            }
+            const group = item as SettingDefinitionGroup;
+            if (group.heading) new Setting(containerEl).setName(group.heading).setHeading();
+            for (const child of group.items ?? []) this.displayOne(child);
+        }
+    }
+
+    /** Renders one definition the way 1.13 would. */
+    private displayOne(def: SettingDefinition): void {
+        const setting = new Setting(this.containerEl).setName(def.name);
+        if (def.desc) setting.setDesc(def.desc);
+
+        if (def.render) {
+            (def.render as (setting: Setting) => void)(setting);
+            return;
+        }
+
+        const control = def.control;
+        if (!control) return;
+        const stored = this.getControlValue(control.key);
+        const value = typeof stored === 'string' ? stored : '';
+
+        switch (control.type) {
+            case 'dropdown':
+                setting.addDropdown(dropdown => {
+                    for (const [key, label] of Object.entries(control.options)) {
+                        dropdown.addOption(key, label);
+                    }
+                    dropdown
+                        .setValue(value)
+                        .onChange(next => void this.setControlValue(control.key, next));
+                });
+                break;
+            case 'text':
+                setting.addText(text => {
+                    if (control.placeholder) text.setPlaceholder(control.placeholder);
+                    text
+                        .setValue(value)
+                        .onChange(next => void this.setControlValue(control.key, next));
+                });
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** Reads a control's value, as the text a field should show. */
+    override getControlValue(key: string): unknown {
+        const settings = this.plugin.settings as unknown as Record<string, unknown>;
+        if (NUMERIC_KEYS.has(key)) {
+            const lines = settings[key] as number;
+            return lines > 0 ? String(lines) : '';
+        }
+        return settings[key];
+    }
+
+    /** Writes a control's value back, parsing the fields that hold numbers. */
+    override setControlValue(key: string, value: unknown): void {
+        const raw = typeof value === 'string' ? value : '';
+        let change: Partial<UncommonTerminalSettings>;
+        switch (key) {
+            case 'fontSizeOverride':
+                change = { fontSizeOverride: parseFloat(raw) || 0 };
+                break;
+            case 'scrollbackLines':
+                change = { scrollbackLines: parseScrollback(raw) };
+                break;
+            default:
+                change = { [key]: raw };
+        }
+
+        if (DEBOUNCED_KEYS.has(key)) this.saveSoon(change);
+        else this.save(change);
+    }
+
+    /**
+     * Re-runs the definitions after a change one of them reads — the color
+     * rows show their own state. `update` only exists from 1.13 on.
+     */
+    private redraw(): void {
+        if (typeof this.update === 'function') this.update();
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- the pre-1.13 path
+        else this.display();
     }
 
     override hide(): void {
@@ -229,8 +360,8 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
      */
     private saveSoon(change: Partial<UncommonTerminalSettings>): void {
         Object.assign(this.plugin.settings, change);
-        if (this.saveTimer !== null) activeWindow.clearTimeout(this.saveTimer);
-        this.saveTimer = activeWindow.setTimeout(() => {
+        if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+        this.saveTimer = window.setTimeout(() => {
             this.saveTimer = null;
             void this.plugin.saveSettings();
         }, SAVE_DEBOUNCE_MS);
@@ -239,7 +370,7 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
     /** Writes a pending change out now, so closing settings never loses one. */
     private flush(): void {
         if (this.saveTimer === null) return;
-        activeWindow.clearTimeout(this.saveTimer);
+        window.clearTimeout(this.saveTimer);
         this.saveTimer = null;
         void this.plugin.saveSettings();
     }
