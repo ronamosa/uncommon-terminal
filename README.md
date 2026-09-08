@@ -103,7 +103,11 @@ soft line break.
 
 ## Installing
 
-From **Settings → Community plugins → Browse**, search for *Uncommon Terminal*.
+Not in the community catalogue yet — the submission is under review. Until it
+lands, install it by hand: take `main.js`, `manifest.json` and `styles.css` from
+the [latest release][releases], put them in
+`<vault>/.obsidian/plugins/uncommon-terminal/`, and enable the plugin under
+**Settings → Community plugins**.
 
 To build it yourself:
 
@@ -155,6 +159,7 @@ lifecycle, and test suite are new here.
 
 MIT. See [LICENSE](LICENSE).
 
+[releases]: https://github.com/ronamosa/uncommon-terminal/releases/latest
 [upstream]: https://github.com/lavs9/obsidian-ghostty-terminal
 [ghostty-web]: https://github.com/coder/ghostty-web
 [ghostty]: https://ghostty.org
