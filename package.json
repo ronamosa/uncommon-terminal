@@ -39,7 +39,7 @@
         "@typescript-eslint/parser": "^8.56.1",
         "esbuild": "^0.28.2",
         "eslint": "^9.39.3",
-        "eslint-plugin-obsidianmd": "^0.1.9",
+        "eslint-plugin-obsidianmd": "^0.4.2",
         "globals": "^17.4.0",
         "obsidian": "^1.13.1",
         "tslib": "2.6.2",

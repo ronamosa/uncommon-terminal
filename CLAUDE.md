@@ -122,21 +122,28 @@ Everything else returns `false` and falls through unchanged.
 
 ### The settings tab
 
-`getSettingDefinitions` is the source of truth: Obsidian 1.13 renders from it
-and indexes it for the settings search, which is what the plugin scorecard
-checks for. `minAppVersion` is still 1.7.2, so `display()` stays as the
-pre-1.13 fallback — but it *walks the same definitions* rather than restating
-them, and adding a control type to the definitions means teaching
-`displayOne` to render it. `getControlValue`/`setControlValue` are the bridge
-to `plugin.settings`: they map the two number-backed fields to and from text,
-so an empty field still means "defer", and they route writes through
-`saveSettings` (which pushes to open terminals) instead of the base class's
-plain `saveData`.
+`groups()` is the source of truth — a private `Row`/`RowGroup` shape that owes
+nothing to Obsidian. Both forms of the tab are built from it: Obsidian 1.13
+renders and search-indexes `getSettingDefinitions()`, which maps each row
+through `toDefinition`, and everything older calls `display()`, which walks the
+same rows itself. Add a row once; both forms get it.
 
-The color rows are `render` definitions, not controls, because a picker always
-holds a color — "unset" needs a reset button that no declarative control
-offers. Their `desc` shows the current state, so changing one has to re-run the
-definitions: `redraw()` calls `update()` on 1.13 and falls back to `display()`.
+That indirection is not decoration. `obsidianmd/no-unsupported-api` fails any
+*member access* on a 1.13-only type while `minAppVersion` is 1.7.2 — so code
+that reads a `SettingDefinition` cannot ship, even though reading a plain
+object is inert at runtime. Building the definitions as literals inside
+`toDefinition` is fine; walking them is not. Keep the pre-1.13 path on `Row`.
+
+`read`/`write` are the bridge to `plugin.settings`, and the `getControlValue`/
+`setControlValue` overrides just delegate to them. They map the number-backed
+fields to and from text, so an empty field still means "defer", and they route
+writes through `saveSettings` (which pushes to open terminals) rather than the
+base class's plain `saveData`.
+
+The color rows are `custom` controls, because a picker always holds a color and
+"unset" needs a reset button neither form offers. Each keeps its own
+description current in place: `update()` is 1.13-only and `display()` is the
+fallback, so a row cannot ask the tab to redraw it.
 
 ## Conventions
 

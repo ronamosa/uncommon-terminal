@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem } from 'obsidian';
+import type { ExtraButtonComponent, SettingDefinition, SettingDefinitionItem } from 'obsidian';
 
 import type UncommonTerminalPlugin from './main';
 
@@ -69,8 +69,10 @@ export const DEFAULT_SETTINGS: UncommonTerminalSettings = {
 /** How long to wait for typing to stop before persisting a text field. */
 const SAVE_DEBOUNCE_MS = 500;
 
+type SettingKey = keyof UncommonTerminalSettings;
+
 /** Settings whose control is a text field, and so should save on a debounce. */
-const DEBOUNCED_KEYS: ReadonlySet<string> = new Set([
+const DEBOUNCED_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
     'fontFamilyOverride',
     'fontSizeOverride',
     'scrollbackLines',
@@ -79,8 +81,53 @@ const DEBOUNCED_KEYS: ReadonlySet<string> = new Set([
     'ghosttyConfigPath',
 ]);
 
-/** Numbers held in a text field, where an empty field means "defer". */
-const NUMERIC_KEYS: ReadonlySet<string> = new Set(['fontSizeOverride', 'scrollbackLines']);
+/**
+ * What a row holds. `custom` is the escape hatch for a row neither form can
+ * express declaratively.
+ */
+type RowControl =
+    | { type: 'dropdown'; key: SettingKey; options: Record<string, string> }
+    | { type: 'text'; key: SettingKey; placeholder?: string }
+    | { type: 'custom'; render: (setting: Setting) => void };
+
+/** One row of the setting tab, in this plugin's own terms. */
+interface Row {
+    name: string;
+    desc?: string;
+    aliases?: string[];
+    control: RowControl;
+}
+
+/** Rows under a shared heading. */
+interface RowGroup {
+    heading: string;
+    rows: Row[];
+}
+
+/**
+ * Restates one row as Obsidian 1.13 wants it. Building the definitions here,
+ * as literals, keeps every 1.13-only member out of the code that runs on
+ * 1.7.2 — `getSettingDefinitions` itself is never called there.
+ */
+function toDefinition(row: Row): SettingDefinition {
+    const base = { name: row.name, desc: row.desc, aliases: row.aliases };
+    const control = row.control;
+
+    switch (control.type) {
+        case 'custom':
+            return { ...base, render: control.render };
+        case 'dropdown':
+            return {
+                ...base,
+                control: { type: 'dropdown', key: control.key, options: control.options },
+            };
+        case 'text':
+            return {
+                ...base,
+                control: { type: 'text', key: control.key, placeholder: control.placeholder },
+            };
+    }
+}
 
 export class UncommonTerminalSettingTab extends PluginSettingTab {
     private saveTimer: number | null = null;
@@ -90,15 +137,15 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
     }
 
     /**
-     * The declarative form, which Obsidian 1.13 and later renders itself and
-     * indexes for the settings search.
+     * Every row, once. Both the declarative form Obsidian 1.13 renders and the
+     * imperative one older versions get are built from this, so the two cannot
+     * drift apart.
      */
-    override getSettingDefinitions(): SettingDefinitionItem[] {
+    private groups(): RowGroup[] {
         return [
             {
-                type: 'group',
                 heading: 'Appearance',
-                items: [
+                rows: [
                     {
                         name: 'Default location',
                         desc: 'Where a terminal opens when you use the ribbon icon or command.',
@@ -162,22 +209,20 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
                 ],
             },
             {
-                type: 'group',
                 heading: 'Colors',
-                items: [
-                    this.colorDefinition('Background', 'backgroundOverride', '#000000'),
+                rows: [
+                    this.colorRow('Background', 'backgroundOverride', '#000000'),
                     // Unlike the background, text color is baked into cells by
                     // the buffer, which has no setter — so it cannot be changed
                     // under a running shell.
-                    this.colorDefinition('Text', 'foregroundOverride', '#cccccc',
+                    this.colorRow('Text', 'foregroundOverride', '#cccccc',
                         'Takes effect in terminals opened from now on.'),
-                    this.colorDefinition('Cursor', 'cursorColorOverride', '#00ff00'),
+                    this.colorRow('Cursor', 'cursorColorOverride', '#00ff00'),
                 ],
             },
             {
-                type: 'group',
                 heading: 'Shell',
-                items: [
+                rows: [
                     {
                         name: 'Shell path',
                         desc: 'Leave empty to use your login shell. Takes effect in terminals opened from now on.',
@@ -191,9 +236,8 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
                 ],
             },
             {
-                type: 'group',
                 heading: 'Ghostty config',
-                items: [
+                rows: [
                     {
                         name: 'Config file path',
                         desc: 'Leave empty to look in the usual places. Reloaded when you change this.',
@@ -207,115 +251,132 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
     /**
      * One color row: a picker, and a reset that puts the slot back to being
      * resolved rather than set. A picker always holds a color, so "unset" needs
-     * its own affordance, which no declarative control offers — hence `render`.
+     * its own affordance, which neither form offers — hence `custom`.
+     *
+     * The row keeps its own description current rather than asking the tab to
+     * re-render, since the two forms redraw by different means.
      */
-    private colorDefinition(
+    private colorRow(
         name: string,
         key: 'backgroundOverride' | 'foregroundOverride' | 'cursorColorOverride',
         sample: string,
         note?: string,
-    ): SettingDefinition {
-        const current = this.plugin.settings[key];
-        const state = current
-            ? `${current}.`
-            : 'Automatic — follows your Ghostty config, then your Obsidian theme.';
+    ): Row {
+        const searchDesc = 'Leave unset to follow your Ghostty config, then your Obsidian theme.';
 
         return {
             name,
-            desc: note ? `${state} ${note}` : state,
+            desc: note ? `${searchDesc} ${note}` : searchDesc,
             aliases: ['color'],
-            render: setting => {
-                setting
-                    .addColorPicker(picker => picker
-                        .setValue(current || sample)
-                        .onChange(value => {
-                            this.save({ [key]: value });
-                            this.redraw();
-                        }))
-                    .addExtraButton(button => button
-                        .setIcon('rotate-ccw')
-                        .setTooltip('Reset to automatic')
-                        .setDisabled(!current)
-                        .onClick(() => {
-                            this.save({ [key]: '' });
-                            this.redraw();
-                        }));
+            control: {
+                type: 'custom',
+                render: setting => {
+                    let reset: ExtraButtonComponent | null = null;
+
+                    const describe = (): void => {
+                        const current = this.plugin.settings[key];
+                        const state = current
+                            ? `${current}.`
+                            : 'Automatic — follows your Ghostty config, then your Obsidian theme.';
+                        setting.setDesc(note ? `${state} ${note}` : state);
+                        reset?.setDisabled(!current);
+                    };
+
+                    setting
+                        .addColorPicker(picker => picker
+                            .setValue(this.plugin.settings[key] || sample)
+                            .onChange(value => {
+                                this.save({ [key]: value });
+                                describe();
+                            }))
+                        .addExtraButton(button => {
+                            reset = button;
+                            button
+                                .setIcon('rotate-ccw')
+                                .setTooltip('Reset to automatic')
+                                .onClick(() => {
+                                    this.save({ [key]: '' });
+                                    describe();
+                                });
+                        });
+
+                    describe();
+                },
             },
         };
     }
 
     /**
-     * The imperative fallback, which Obsidian only calls before 1.13. It walks
-     * the same definitions rather than restating them, so the two forms cannot
-     * drift apart.
+     * The declarative form, which Obsidian 1.13 and later renders itself and
+     * indexes for the settings search.
      */
+    override getSettingDefinitions(): SettingDefinitionItem[] {
+        return this.groups().map(group => ({
+            type: 'group',
+            heading: group.heading,
+            items: group.rows.map(toDefinition),
+        }));
+    }
+
+    /** The imperative form, which Obsidian only calls before 1.13. */
     override display(): void {
         const { containerEl } = this;
         containerEl.empty();
 
-        for (const item of this.getSettingDefinitions()) {
-            if (!('type' in item)) {
-                this.displayOne(item);
-                continue;
-            }
-            const group = item as SettingDefinitionGroup;
-            if (group.heading) new Setting(containerEl).setName(group.heading).setHeading();
-            for (const child of group.items ?? []) this.displayOne(child);
+        for (const group of this.groups()) {
+            new Setting(containerEl).setName(group.heading).setHeading();
+            for (const row of group.rows) this.displayRow(row);
         }
     }
 
-    /** Renders one definition the way 1.13 would. */
-    private displayOne(def: SettingDefinition): void {
-        const setting = new Setting(this.containerEl).setName(def.name);
-        if (def.desc) setting.setDesc(def.desc);
+    /** Renders one row the way 1.13 would. */
+    private displayRow(row: Row): void {
+        const setting = new Setting(this.containerEl).setName(row.name);
+        if (row.desc) setting.setDesc(row.desc);
 
-        if (def.render) {
-            (def.render as (setting: Setting) => void)(setting);
-            return;
-        }
-
-        const control = def.control;
-        if (!control) return;
-        const stored = this.getControlValue(control.key);
-        const value = typeof stored === 'string' ? stored : '';
-
+        const control = row.control;
         switch (control.type) {
+            case 'custom':
+                control.render(setting);
+                break;
             case 'dropdown':
                 setting.addDropdown(dropdown => {
-                    for (const [key, label] of Object.entries(control.options)) {
-                        dropdown.addOption(key, label);
+                    for (const [value, label] of Object.entries(control.options)) {
+                        dropdown.addOption(value, label);
                     }
                     dropdown
-                        .setValue(value)
-                        .onChange(next => void this.setControlValue(control.key, next));
+                        .setValue(this.read(control.key))
+                        .onChange(next => this.write(control.key, next));
                 });
                 break;
             case 'text':
                 setting.addText(text => {
                     if (control.placeholder) text.setPlaceholder(control.placeholder);
                     text
-                        .setValue(value)
-                        .onChange(next => void this.setControlValue(control.key, next));
+                        .setValue(this.read(control.key))
+                        .onChange(next => this.write(control.key, next));
                 });
                 break;
-            default:
-                break;
         }
     }
 
-    /** Reads a control's value, as the text a field should show. */
     override getControlValue(key: string): unknown {
-        const settings = this.plugin.settings as unknown as Record<string, unknown>;
-        if (NUMERIC_KEYS.has(key)) {
-            const lines = settings[key] as number;
-            return lines > 0 ? String(lines) : '';
-        }
-        return settings[key];
+        return this.read(key as SettingKey);
     }
 
-    /** Writes a control's value back, parsing the fields that hold numbers. */
     override setControlValue(key: string, value: unknown): void {
-        const raw = typeof value === 'string' ? value : '';
+        this.write(key as SettingKey, typeof value === 'string' ? value : '');
+    }
+
+    /** A setting as the text its field should show. Zero means "defer". */
+    private read(key: SettingKey): string {
+        const value = this.plugin.settings[key];
+        if (typeof value === 'number') return value > 0 ? String(value) : '';
+        return value;
+    }
+
+    /** The reverse, parsing the fields that hold numbers. */
+    private write(key: SettingKey, raw: string): void {
         let change: Partial<UncommonTerminalSettings>;
         switch (key) {
             case 'fontSizeOverride':
@@ -330,16 +391,6 @@ export class UncommonTerminalSettingTab extends PluginSettingTab {
 
         if (DEBOUNCED_KEYS.has(key)) this.saveSoon(change);
         else this.save(change);
-    }
-
-    /**
-     * Re-runs the definitions after a change one of them reads — the color
-     * rows show their own state. `update` only exists from 1.13 on.
-     */
-    private redraw(): void {
-        if (typeof this.update === 'function') this.update();
-        // eslint-disable-next-line @typescript-eslint/no-deprecated -- the pre-1.13 path
-        else this.display();
     }
 
     override hide(): void {
