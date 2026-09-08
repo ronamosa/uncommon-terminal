@@ -1,6 +1,6 @@
 {
     "name": "uncommon-terminal",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Run a real shell in an Obsidian pane, rendered by Ghostty's terminal parser.",
     "main": "main.js",
     "type": "commonjs",

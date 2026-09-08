@@ -1,7 +1,7 @@
 {
 	"id": "uncommon-terminal",
 	"name": "Uncommon Terminal",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.7.2",
 	"description": "Run a real shell in a pane, rendered by Ghostty's terminal parser. Mouse-aware TUIs scroll properly. macOS and Linux.",
 	"author": "Ron Amosa",
