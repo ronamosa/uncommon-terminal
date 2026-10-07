@@ -99,7 +99,7 @@ Keybinds from your Ghostty config are merged with a small built-in set and
 intercepted in the capture phase, so a key meant for the shell never reaches
 Obsidian's global hotkeys. The built-ins are copy, paste, and the
 kitty-protocol newlines for `shift+enter` and `cmd+enter` that TUIs use for a
-soft line break.
+soft line break, and back-tab (`ESC [ Z`) for `shift+tab`.
 
 ## Installing
 

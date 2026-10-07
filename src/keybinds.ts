@@ -29,13 +29,16 @@ export interface KeyChord {
 /**
  * Builtins we always enforce, because they are what makes the pane feel like a
  * terminal rather than a text field. The two kitty-protocol newlines are what
- * lets shift+enter and cmd+enter reach TUIs that understand them.
+ * lets shift+enter and cmd+enter reach TUIs that understand them. Shift+tab is
+ * here because ghostty-web's encoder sends a plain tab whether or not shift is
+ * held; native Ghostty sends CSI Z (back-tab), which readline and TUIs expect.
  */
 export const BUILTIN_KEYBINDS: Keybind[] = [
     { mods: new Set(['super']), key: 'c', action: 'copy_to_clipboard' },
     { mods: new Set(['super']), key: 'v', action: 'paste_from_clipboard' },
     { mods: new Set(['shift']), key: 'enter', action: 'text:\x1b[13;2u' },
     { mods: new Set(['super']), key: 'enter', action: 'text:\x1b[13;9u' },
+    { mods: new Set(['shift']), key: 'tab', action: 'text:\x1b[Z' },
 ];
 
 export function setsEqual(a: Set<string>, b: Set<string>): boolean {
