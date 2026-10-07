@@ -102,6 +102,12 @@ describe('findKeybind', () => {
         assert.equal(findKeybind(chord({ key: 'Enter', shiftKey: true }), keybinds)?.action,
             'text:\x1b[13;2u');
     });
+
+    it('sends back-tab for shift+tab, not a plain tab', () => {
+        assert.equal(findKeybind(chord({ key: 'Tab', shiftKey: true }), keybinds)?.action,
+            'text:\x1b[Z');
+        assert.equal(findKeybind(chord({ key: 'Tab' }), keybinds), undefined);
+    });
 });
 
 describe('unescapeGhosttyText', () => {
