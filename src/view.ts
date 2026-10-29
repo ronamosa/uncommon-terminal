@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type UncommonTerminalPlugin from './main';
+import { installBoxDrawing } from './box-drawing';
 import { buildEffectiveKeybinds, findKeybind, unescapeGhosttyText, type Keybind } from './keybinds';
 import { PtySession, resolvePython } from './pty';
 import { FALLBACK_SCROLLBACK } from './settings';
@@ -112,6 +113,7 @@ export class TerminalView extends ItemView {
         this.fitAddon = new FitAddon();
         terminal.loadAddon(this.fitAddon);
         terminal.open(screenEl);
+        if (terminal.renderer) installBoxDrawing(terminal.renderer);
         this.terminal = terminal;
 
         terminal.attachCustomWheelEventHandler(ev => this.handleWheel(ev));
